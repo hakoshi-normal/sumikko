@@ -346,27 +346,6 @@
                 <div class="step-output" id="step2Output"></div>
             </div>
             
-            <!-- グローバル設定 -->
-            <div class="step-card">
-                <div class="step-header">
-                    <div class="step-title">グローバル設定</div>
-                    <div class="step-status pending">共通設定</div>
-                </div>
-                <div class="step-description">
-                    全ステップで使用する共通設定です
-                </div>
-                <div class="step-controls">
-                    <div class="input-group">
-                        <label>ファイル名モード:</label>
-                        <select id="filenameMode">
-                            <option value="auto">自動判定</option>
-                            <option value="old">旧形式（ファイル名埋め込み）</option>
-                            <option value="new">新形式（JSON参照）</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-            
             <!-- Step 3 -->
             <div class="step-card" id="step3">
                 <div class="step-header">
@@ -392,6 +371,27 @@
                     <button class="btn btn-primary" onclick="runStep3()">実行</button>
                 </div>
                 <div class="step-output" id="step3Output"></div>
+            </div>
+            
+            <!-- グローバル設定 -->
+            <div class="step-card">
+                <div class="step-header">
+                    <div class="step-title">グローバル設定</div>
+                    <div class="step-status pending">共通設定</div>
+                </div>
+                <div class="step-description">
+                    全ステップで使用する共通設定です
+                </div>
+                <div class="step-controls">
+                    <div class="input-group">
+                        <label>ファイル名モード:</label>
+                        <select id="filenameMode">
+                            <option value="auto">自動判定</option>
+                            <option value="old">旧形式（ファイル名埋め込み）</option>
+                            <option value="new">新形式（JSON参照）</option>
+                        </select>
+                    </div>
+                </div>
             </div>
         </div>
         
