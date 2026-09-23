@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>食事摂取量推定システム</title>
+<style>
+  :root { --fg:#222; --muted:#666; --line:#ddd; --bg:#fafafa; --accent:#2f6f9f; }
+  * { box-sizing:border-box; }
+  body { font-family:"Meiryo","Yu Gothic",sans-serif; color:var(--fg); background:var(--bg); margin:0; }
+  header { background:#fff; border-bottom:1px solid var(--line); padding:10px 20px; }
+  header h1 { font-size:17px; margin:0; font-weight:600; }
+  nav { display:flex; gap:4px; background:#fff; border-bottom:1px solid var(--line); padding:0 20px; }
+  nav button { border:none; background:none; padding:10px 14px; cursor:pointer; font-size:14px; color:var(--muted); border-bottom:2px solid transparent; }
+  nav button.active { color:var(--accent); border-bottom-color:var(--accent); font-weight:600; }
+  main { padding:16px 20px; max-width:1100px; }
+  .panel { background:#fff; border:1px solid var(--line); border-radius:6px; padding:14px 16px; margin-bottom:14px; }
+  .panel h2 { font-size:14px; margin:0 0 10px; }
+  .sel-group { display:flex; flex-wrap:wrap; gap:18px; }
+  .sel-block { border:1px solid var(--line); border-radius:4px; padding:8px 10px; min-width:140px; }
+  .sel-block b { font-size:13px; display:block; margin-bottom:4px; }
+  label { font-size:13px; margin-right:10px; white-space:nowrap; }
+  button.act { background:var(--accent); color:#fff; border:none; border-radius:4px; padding:7px 16px; font-size:13px; cursor:pointer; }
+  button.act:disabled { background:#9ab; cursor:default; }
+  button.sub { background:#fff; color:var(--accent); border:1px solid var(--accent); border-radius:4px; padding:6px 12px; font-size:12px; cursor:pointer; }
+  .msg { font-size:13px; color:var(--muted); margin:6px 0; white-space:pre-wrap; }
+  .err { color:#b03030; }
+  table { border-collapse:collapse; font-size:12px; width:100%; }
+  th, td { border:1px solid var(--line); padding:4px 8px; text-align:left; }
+  th { background:#f0f0f0; }
+  img.crop { max-width:120px; border:1px solid var(--line); border-radius:3px; }
+  img.tray { max-width:520px; border:1px solid var(--line); display:block; }
+  img.cm { max-width:420px; border:1px solid var(--line); }
+  .dish-row { display:flex; gap:14px; flex-wrap:wrap; margin-top:8px; }
+  .dish { border:1px solid var(--line); border-radius:4px; padding:8px; text-align:center; background:#fff; }
+  .dish select, .dish input { font-size:12px; margin-top:4px; }
+  .row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:6px 0; }
+  .hidden { display:none; }
+  #progress-wrap { margin-top:10px; }
+  #progress-bar-bg { background:#eee; border-radius:4px; height:14px; overflow:hidden; }
+  #progress-bar { background:var(--accent); height:100%; width:0%; transition:width .3s; }
+  #progress-msg { font-size:12px; color:var(--muted); margin-top:3px; }
+</style>
+</head>
+<body>
+<header><h1>食事摂取量推定システム</h1></header>
+<nav>
+  <button data-tab="t1" class="active">1. 食器検出・設定</button>
+  <button data-tab="t2">2. 食器分類</button>
+  <button data-tab="t3">3. 摂取量推定</button>
+  <button data-tab="t4">4. 結果評価</button>
+</nav>
+<main>
+
+<!-- 共通: 対象データ選択 (全ページで共有) -->
+<div class="panel">
+  <h2>対象データ選択</h2>
+  <div class="sel-group">
+    <div class="sel-block"><b>日付</b><div id="sel-dates"></div></div>
+    <div class="sel-block"><b>トレーID</b><div id="sel-trays"></div></div>
+    <div class="sel-block"><b>食後撮影データ</b><div id="sel-names"></div></div>
+  </div>
+  <div id="progress-wrap">
+    <div id="progress-bar-bg"><div id="progress-bar"></div></div>
+    <div id="progress-msg"></div>
+  </div>
+</div>
+
+<!-- ===================== ページ1 ===================== -->
+<section id="t1" class="tab">
+  <div class="panel">
+    <h2>食器検出・基準設定（10割画像からYOLO検出 / 連番深度の平均を事前計算）</h2>
+    <div class="row">
+      <label><input type="checkbox" id="cache1" checked> YOLOキャッシュを使用</label>
+      <button class="act" id="btn-detect">検出実行</button>
+      <button class="sub" id="btn-load1">保存済み設定を表示</button>
+    </div>
+    <div class="msg" id="msg1"></div>
+  </div>
+  <div id="detect-results"></div>
+</section>
+
+<!-- ===================== ページ2 ===================== -->
+<section id="t2" class="tab hidden">
+  <div class="panel">
+    <h2>食器分類（基準食器とのハンガリアンマッチング）</h2>
+    <div class="row">
+      <label><input type="checkbox" id="cache2" checked> YOLOキャッシュを使用</label>
+      <button class="act" id="btn-classify">分類実行</button>
+      <button class="sub" id="btn-load2">分類結果を表示</button>
+    </div>
+    <div class="msg" id="msg2"></div>
+  </div>
+  <div id="classify-results"></div>
+</section>
+
+<!-- ===================== ページ3 ===================== -->
+<section id="t3" class="tab hidden">
+  <div class="panel">
+    <h2>摂取量推定（深度から推定）</h2>
+    <div class="row">
+      <label><input type="checkbox" id="unet" checked> U-Netマスク使用（固形食）</label>
+      <label><input type="checkbox" id="cache3" checked> キャッシュ使用</label>
+      <label>試行回数: <input type="number" id="ntrials" value="10" min="1" style="width:60px"></label>
+      <span style="font-size:12px;color:#888">（基準の0割/10割は撮影セット・連番をランダム選択し中央値を採用）</span>
+      <button class="act" id="btn-estimate">推定実行</button>
+    </div>
+    <div class="msg" id="msg3"></div>
+  </div>
+  <div id="estimate-results"></div>
+</section>
+
+<!-- ===================== ページ4 ===================== -->
+<section id="t4" class="tab hidden">
+  <div class="panel">
+    <h2>推定結果の評価（final_results.json × measured_results.json）</h2>
+    <div class="row">
+      <button class="act" id="btn-eval">評価実行</button>
+    </div>
+    <div class="msg" id="msg4"></div>
+  </div>
+  <div id="eval-results"></div>
+</section>
+
+</main>
+<script>
+let SCAN = null, PLATE_NAMES = [];
+
+async function api(url, opt) {
+  const r = await fetch(url, opt);
+  if (!r.ok) { const e = await r.json().catch(()=>({})); throw new Error(e.detail||r.statusText); }
+  return r.json();
+}
+const post = (url, body) => api(url, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)});
+
+// ---- 進捗バー ----
+let progressTimer = null;
+function startProgress() {
+  stopProgress();
+  progressTimer = setInterval(async () => {
+    try {
+      const p = await api("/api/progress");
+      const pct = p.total ? Math.round(p.current / p.total * 100) : 0;
+      document.getElementById("progress-bar").style.width = pct + "%";
+      document.getElementById("progress-msg").textContent = p.message || "";
+    } catch(e) {}
+  }, 400);
+}
+function stopProgress() {
+  if (progressTimer) { clearInterval(progressTimer); progressTimer = null; }
+  document.getElementById("progress-bar").style.width = "0%";
+  document.getElementById("progress-msg").textContent = "";
+}
+
+// ---- タブ切替 ----
+document.querySelectorAll("nav button").forEach(b => b.onclick = () => {
+  document.querySelectorAll("nav button").forEach(x=>x.classList.remove("active"));
+  b.classList.add("active");
+  document.querySelectorAll("section.tab").forEach(s=>s.classList.add("hidden"));
+  document.getElementById(b.dataset.tab).classList.remove("hidden");
+});
+
+// ---- 共通: 対象選択 ----
+function renderSelector() {
+  const dates = document.getElementById("sel-dates");
+  dates.innerHTML = SCAN.dates.map(d =>
+    `<label><input type="checkbox" class="datechk" value="${d.date}" checked> ${d.date}</label>`).join("<br>");
+  const trays = document.getElementById("sel-trays");
+  trays.innerHTML = SCAN.all_trays.map(t =>
+    `<label><input type="checkbox" class="traychk" value="${t}" checked> ${t}</label>`).join("<br>");
+  const names = document.getElementById("sel-names");
+  names.innerHTML = SCAN.target_names.length
+    ? SCAN.target_names.map(n => `<label><input type="checkbox" class="namechk" value="${n}" checked> ${n}</label>`).join("<br>")
+    : '<span style="font-size:12px;color:#999">なし</span>';
+}
+
+// 選択を {targets:[{date,tray}], type1s:[...]} に展開（存在する組合せのみ）
+function getSelection() {
+  const dates = new Set([...document.querySelectorAll(".datechk:checked")].map(c=>c.value));
+  const trays = new Set([...document.querySelectorAll(".traychk:checked")].map(c=>c.value));
+  const type1s = [...document.querySelectorAll(".namechk:checked")].map(c=>c.value);
+  const targets = [];
+  for (const d of SCAN.dates)
+    if (dates.has(d.date))
+      for (const t of d.trays)
+        if (trays.has(t.tray)) targets.push({date:d.date, tray:t.tray});
+  return {targets, type1s};
+}
+
+// ---- ページ1: 検出 ----
+function renderDetectResult(r) {
+  const div = document.createElement("div");
+  div.className = "panel";
+  if (!r.ok) { div.innerHTML = `<h2>${r.key}</h2><div class="msg err">${r.error}</div>`; return div; }
+  let html = `<h2>${r.key}</h2>`;
+  if (r.n_mean_depth !== undefined) html += `<div class="msg">平均深度を ${r.n_mean_depth} 件事前計算しました</div>`;
+  html += `<img class="tray" src="${r.tray_image}"><div class="dish-row">`;
+  r.setting.forEach((s, i) => {
+    const opts = PLATE_NAMES.map(n => `<option ${n===s.plate_name?"selected":""}>${n}</option>`).join("");
+    html += `<div class="dish">
+      <img class="crop" src="${r.crops[i]}"><br>
+      <b>#${i}</b><br>
+      <select data-i="${i}" class="pname">${opts}</select><br>
+      <label><input type="checkbox" class="nansai" data-i="${i}" ${s.nansai?"checked":""}> 軟菜食</label>
+      <div style="color:#999;font-size:11px">var=${r.depth_var[i].toExponential(2)}</div>
+    </div>`;
+  });
+  html += `</div><div class="row"><button class="act save-setting">設定を保存</button><span class="msg"></span></div>`;
+  div.innerHTML = html;
+  div.querySelector(".save-setting").onclick = async () => {
+    const [date, tray] = r.key.split("_");
+    const setting = [...div.querySelectorAll(".pname")].map(sel => ({
+      plate_number: +sel.dataset.i,
+      plate_name: sel.value,
+      nansai: div.querySelector(`.nansai[data-i="${sel.dataset.i}"]`).checked,
+    }));
+    try {
+      await post("/api/plate_setting", {date, tray, setting});
+      div.querySelector(".msg").textContent = "保存しました";
+    } catch(e) { div.querySelector(".msg").textContent = e.message; }
+  };
+  return div;
+}
+
+document.getElementById("btn-detect").onclick = async () => {
+  const {targets, type1s} = getSelection();
+  if (!targets.length) return alert("日付とトレーIDを選択してください");
+  const msg = document.getElementById("msg1"), out = document.getElementById("detect-results");
+  msg.className = "msg"; msg.textContent = "検出実行中..."; out.innerHTML = "";
+  startProgress();
+  try {
+    const res = await post("/api/detect", {targets, type1s, use_cache: document.getElementById("cache1").checked});
+    msg.textContent = "完了";
+    res.results.forEach(r => out.appendChild(renderDetectResult(r)));
+  } catch(e) { msg.textContent = e.message; msg.className = "msg err"; }
+  finally { stopProgress(); }
+};
+
+document.getElementById("btn-load1").onclick = async () => {
+  const {targets} = getSelection();
+  const out = document.getElementById("detect-results");
+  out.innerHTML = "";
+  for (const t of targets) {
+    const r = await api(`/api/detect_result?date=${t.date}&tray=${t.tray}`);
+    if (r.exists) {
+      r.ok = true; r.key = `${t.date}_${t.tray}`; r.n_dishes = r.setting.length;
+      r.depth_var = r.setting.map(()=>0);
+      out.appendChild(renderDetectResult(r));
+    }
+  }
+};
+
+// ---- ページ2: 分類 ----
+document.getElementById("btn-classify").onclick = async () => {
+  const {targets, type1s} = getSelection();
+  if (!targets.length) return alert("日付とトレーIDを選択してください");
+  const msg = document.getElementById("msg2"), out = document.getElementById("classify-results");
+  msg.className = "msg"; msg.textContent = "分類実行中..."; out.innerHTML = "";
+  startProgress();
+  try {
+    const res = await post("/api/classify", {targets, type1s, use_cache: document.getElementById("cache2").checked});
+    msg.textContent = "完了";
+    for (const r of res.results) {
+      const div = document.createElement("div"); div.className = "panel";
+      if (!r.ok) { div.innerHTML = `<h2>${r.key}</h2><div class="msg err">${r.error}</div>`; }
+      else {
+        let html = `<h2>${r.key}</h2><table><tr><th>タイプ1</th><th>撮影</th><th>状態</th><th>分類結果</th></tr>`;
+        for (const s of r.summary)
+          html += `<tr><td>${s.type1}</td><td>${s.prefix}</td><td>${s.status}</td><td>${s.mapping.map(m=>`#${m.crop}→${m.meal}`).join(", ")}</td></tr>`;
+        html += "</table>"; div.innerHTML = html;
+      }
+      out.appendChild(div);
+    }
+  } catch(e) { msg.textContent = e.message; msg.className = "msg err"; }
+  finally { stopProgress(); }
+};
+
+document.getElementById("btn-load2").onclick = async () => {
+  const {targets} = getSelection();
+  const out = document.getElementById("classify-results");
+  out.innerHTML = "";
+  for (const t of targets) {
+    const r = await api(`/api/classify_result?date=${t.date}&tray=${t.tray}`);
+    const div = document.createElement("div"); div.className = "panel";
+    let html = `<h2>${t.date}_${t.tray}</h2>`;
+    if (!r.exists) html += `<div class="msg">分類結果なし</div>`;
+    for (const m of r.meals) {
+      html += `<b>${m.meal}</b><div class="dish-row">` +
+        m.crops.map(c => `<div class="dish"><img class="crop" src="${c.image}"><br><span style="font-size:11px">${c.type1}</span></div>`).join("") + `</div>`;
+    }
+    div.innerHTML = html; out.appendChild(div);
+  }
+};
+
+// ---- ページ3: 推定 ----
+document.getElementById("btn-estimate").onclick = async () => {
+  const {targets, type1s} = getSelection();
+  if (!targets.length) return alert("日付とトレーIDを選択してください");
+  if (!type1s.length) return alert("食後撮影データを選択してください");
+  const msg = document.getElementById("msg3"), out = document.getElementById("estimate-results");
+  msg.className = "msg"; msg.textContent = "推定実行中..."; out.innerHTML = "";
+  startProgress();
+  try {
+    const res = await post("/api/estimate", {
+      targets, type1s,
+      use_unet: document.getElementById("unet").checked,
+      use_cache: document.getElementById("cache3").checked,
+      n_trials: +document.getElementById("ntrials").value,
+    });
+    msg.textContent = "完了（" + res.saved + " に保存）";
+    let html = `<div class="panel"><table><tr><th>対象</th><th>結果</th></tr>`;
+    for (const r of res.results)
+      html += `<tr><td>${r.key}</td><td>${r.ok ? r.n_records + "件のレコード" : '<span class="err">'+r.error+'</span>'}</td></tr>`;
+    out.innerHTML = html + "</table></div>";
+  } catch(e) { msg.textContent = e.message; msg.className = "msg err"; }
+  finally { stopProgress(); }
+};
+
+// ---- ページ4: 評価 ----
+document.getElementById("btn-eval").onclick = async () => {
+  const {targets} = getSelection();
+  const msg = document.getElementById("msg4"), out = document.getElementById("eval-results");
+  msg.className = "msg"; msg.textContent = "評価中..."; out.innerHTML = "";
+  try {
+    const r = await api("/api/results");
+    msg.textContent = (r.has_measured ? "measured_results.json を参照" : "measured_results.json なし（推定値のみ表示）");
+    const sel = targets.length ? new Set(targets.map(t=>`${t.date}_${t.tray}`)) : null;
+    const rows = r.rows.filter(x => !sel || sel.has(x.plate_id));
+    let html = "";
+    for (const [label, cm] of Object.entries(r.cm))
+      html += `<div class="panel"><h2>${label==="nansai"?"軟菜食":"固形食"}: R²=${cm.r2.toFixed(3)}, MAE=${cm.mae.toFixed(3)}, N=${cm.n}</h2><img class="cm" src="${cm.url}"></div>`;
+    html += `<div class="panel"><table><tr><th>対象</th><th>食種</th><th>タイプ</th><th>target_file</th><th>軟菜</th><th>推定値(中央値)</th><th>試行数</th><th>正解値</th><th>誤差</th></tr>`;
+    for (const x of rows) {
+      const pred = x.y_pred.length ? x.y_pred[0].toFixed(3) : "-";
+      const all = (x.y_pred_all||[]).map(v=>v.toFixed(3)).join(", ");
+      const err = (x.mae !== null && x.mae !== undefined) ? x.mae.toFixed(3) : "-";
+      html += `<tr><td>${x.plate_id}</td><td>${x.plate_name}</td><td>${x.target||""}</td><td>${x.target_file||""}</td><td>${x.nansai?"○":""}</td><td title="${all}">${pred}</td><td>${x.n_trials||1}</td><td>${x.y_true??"-"}</td><td>${err}</td></tr>`;
+    }
+    html += "</table></div>";
+    out.innerHTML = html;
+  } catch(e) { msg.textContent = e.message; msg.className = "msg err"; }
+};
+
+// ---- 初期化 ----
+(async () => {
+  SCAN = await api("/api/scan");
+  const cfg = await api("/api/config");
+  PLATE_NAMES = cfg.plate_names;
+  renderSelector();
+})();
+</script>
+</body>
+</html>

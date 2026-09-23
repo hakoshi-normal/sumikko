@@ -1,0 +1,1312 @@
+[
+    {
+        "target_file": "hospital_A_P_20260825142406",
+        "y_true": {
+            "shushoku": 1.0,
+            "shusai": 1.0,
+            "fukusai1": 1.0,
+            "fukusai2": 1.0,
+            "fukusai3": 1.0
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825142410",
+        "y_true": {
+            "shushoku": 1.0,
+            "shusai": 1.0,
+            "fukusai1": 1.0,
+            "fukusai2": 1.0,
+            "fukusai3": 1.0
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825142414",
+        "y_true": {
+            "shushoku": 1.0,
+            "shusai": 1.0,
+            "fukusai1": 1.0,
+            "fukusai2": 1.0,
+            "fukusai3": 1.0
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825142419",
+        "y_true": {
+            "shushoku": 1.0,
+            "shusai": 1.0,
+            "fukusai1": 1.0,
+            "fukusai2": 1.0,
+            "fukusai3": 1.0
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825142423",
+        "y_true": {
+            "shushoku": 1.0,
+            "shusai": 1.0,
+            "fukusai1": 1.0,
+            "fukusai2": 1.0,
+            "fukusai3": 1.0
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825142428",
+        "y_true": {
+            "shushoku": 1.0,
+            "shusai": 1.0,
+            "fukusai1": 1.0,
+            "fukusai2": 1.0,
+            "fukusai3": 1.0
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825142431",
+        "y_true": {
+            "shushoku": 1.0,
+            "shusai": 1.0,
+            "fukusai1": 1.0,
+            "fukusai2": 1.0,
+            "fukusai3": 1.0
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825142434",
+        "y_true": {
+            "shushoku": 1.0,
+            "shusai": 1.0,
+            "fukusai1": 1.0,
+            "fukusai2": 1.0,
+            "fukusai3": 1.0
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825142437",
+        "y_true": {
+            "shushoku": 1.0,
+            "shusai": 1.0,
+            "fukusai1": 1.0,
+            "fukusai2": 1.0,
+            "fukusai3": 1.0
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825142441",
+        "y_true": {
+            "shushoku": 1.0,
+            "shusai": 1.0,
+            "fukusai1": 1.0,
+            "fukusai2": 1.0,
+            "fukusai3": 1.0
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825142445",
+        "y_true": {
+            "shushoku": 1.0,
+            "shusai": 1.0,
+            "fukusai1": 1.0,
+            "fukusai2": 1.0,
+            "fukusai3": 1.0
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825142447",
+        "y_true": {
+            "shushoku": 1.0,
+            "shusai": 1.0,
+            "fukusai1": 1.0,
+            "fukusai2": 1.0,
+            "fukusai3": 1.0
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825142450",
+        "y_true": {
+            "shushoku": 1.0,
+            "shusai": 1.0,
+            "fukusai1": 1.0,
+            "fukusai2": 1.0,
+            "fukusai3": 1.0
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825142453",
+        "y_true": {
+            "shushoku": 1.0,
+            "shusai": 1.0,
+            "fukusai1": 1.0,
+            "fukusai2": 1.0,
+            "fukusai3": 1.0
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825142457",
+        "y_true": {
+            "shushoku": 1.0,
+            "shusai": 1.0,
+            "fukusai1": 1.0,
+            "fukusai2": 1.0,
+            "fukusai3": 1.0
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825142501",
+        "y_true": {
+            "shushoku": 1.0,
+            "shusai": 1.0,
+            "fukusai1": 1.0,
+            "fukusai2": 1.0,
+            "fukusai3": 1.0
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825142505",
+        "y_true": {
+            "shushoku": 1.0,
+            "shusai": 1.0,
+            "fukusai1": 1.0,
+            "fukusai2": 1.0,
+            "fukusai3": 1.0
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825142513",
+        "y_true": {
+            "shushoku": 1.0,
+            "shusai": 1.0,
+            "fukusai1": 1.0,
+            "fukusai2": 1.0,
+            "fukusai3": 1.0
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825142517",
+        "y_true": {
+            "shushoku": 1.0,
+            "shusai": 1.0,
+            "fukusai1": 1.0,
+            "fukusai2": 1.0,
+            "fukusai3": 1.0
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825142523",
+        "y_true": {
+            "shushoku": 1.0,
+            "shusai": 1.0,
+            "fukusai1": 1.0,
+            "fukusai2": 1.0,
+            "fukusai3": 1.0
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825142531",
+        "y_true": {
+            "shushoku": 1.0,
+            "shusai": 1.0,
+            "fukusai1": 1.0,
+            "fukusai2": 1.0,
+            "fukusai3": 1.0
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825142536",
+        "y_true": {
+            "shushoku": 1.0,
+            "shusai": 1.0,
+            "fukusai1": 1.0,
+            "fukusai2": 1.0,
+            "fukusai3": 1.0
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825142540",
+        "y_true": {
+            "shushoku": 1.0,
+            "shusai": 1.0,
+            "fukusai1": 1.0,
+            "fukusai2": 1.0,
+            "fukusai3": 1.0
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825142542",
+        "y_true": {
+            "shushoku": 1.0,
+            "shusai": 1.0,
+            "fukusai1": 1.0,
+            "fukusai2": 1.0,
+            "fukusai3": 1.0
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825135355",
+        "y_true": {
+            "shushoku": 0.0,
+            "shusai": 0.0,
+            "fukusai1": 0.0,
+            "fukusai2": 0.0,
+            "fukusai3": 0.0
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825135408",
+        "y_true": {
+            "shushoku": 0.0,
+            "shusai": 0.0,
+            "fukusai1": 0.0,
+            "fukusai2": 0.0,
+            "fukusai3": 0.0
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825135416",
+        "y_true": {
+            "shushoku": 0.0,
+            "shusai": 0.0,
+            "fukusai1": 0.0,
+            "fukusai2": 0.0,
+            "fukusai3": 0.0
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825135421",
+        "y_true": {
+            "shushoku": 0.0,
+            "shusai": 0.0,
+            "fukusai1": 0.0,
+            "fukusai2": 0.0,
+            "fukusai3": 0.0
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825135425",
+        "y_true": {
+            "shushoku": 0.0,
+            "shusai": 0.0,
+            "fukusai1": 0.0,
+            "fukusai2": 0.0,
+            "fukusai3": 0.0
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825135429",
+        "y_true": {
+            "shushoku": 0.0,
+            "shusai": 0.0,
+            "fukusai1": 0.0,
+            "fukusai2": 0.0,
+            "fukusai3": 0.0
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825135433",
+        "y_true": {
+            "shushoku": 0.0,
+            "shusai": 0.0,
+            "fukusai1": 0.0,
+            "fukusai2": 0.0,
+            "fukusai3": 0.0
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825135437",
+        "y_true": {
+            "shushoku": 0.0,
+            "shusai": 0.0,
+            "fukusai1": 0.0,
+            "fukusai2": 0.0,
+            "fukusai3": 0.0
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825135440",
+        "y_true": {
+            "shushoku": 0.0,
+            "shusai": 0.0,
+            "fukusai1": 0.0,
+            "fukusai2": 0.0,
+            "fukusai3": 0.0
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825135444",
+        "y_true": {
+            "shushoku": 0.0,
+            "shusai": 0.0,
+            "fukusai1": 0.0,
+            "fukusai2": 0.0,
+            "fukusai3": 0.0
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825135449",
+        "y_true": {
+            "shushoku": 0.0,
+            "shusai": 0.0,
+            "fukusai1": 0.0,
+            "fukusai2": 0.0,
+            "fukusai3": 0.0
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825135455",
+        "y_true": {
+            "shushoku": 0.0,
+            "shusai": 0.0,
+            "fukusai1": 0.0,
+            "fukusai2": 0.0,
+            "fukusai3": 0.0
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825135500",
+        "y_true": {
+            "shushoku": 0.0,
+            "shusai": 0.0,
+            "fukusai1": 0.0,
+            "fukusai2": 0.0,
+            "fukusai3": 0.0
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825135506",
+        "y_true": {
+            "shushoku": 0.0,
+            "shusai": 0.0,
+            "fukusai1": 0.0,
+            "fukusai2": 0.0,
+            "fukusai3": 0.0
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825135511",
+        "y_true": {
+            "shushoku": 0.0,
+            "shusai": 0.0,
+            "fukusai1": 0.0,
+            "fukusai2": 0.0,
+            "fukusai3": 0.0
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825135516",
+        "y_true": {
+            "shushoku": 0.0,
+            "shusai": 0.0,
+            "fukusai1": 0.0,
+            "fukusai2": 0.0,
+            "fukusai3": 0.0
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825135523",
+        "y_true": {
+            "shushoku": 0.0,
+            "shusai": 0.0,
+            "fukusai1": 0.0,
+            "fukusai2": 0.0,
+            "fukusai3": 0.0
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825135535",
+        "y_true": {
+            "shushoku": 0.0,
+            "shusai": 0.0,
+            "fukusai1": 0.0,
+            "fukusai2": 0.0,
+            "fukusai3": 0.0
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825135540",
+        "y_true": {
+            "shushoku": 0.0,
+            "shusai": 0.0,
+            "fukusai1": 0.0,
+            "fukusai2": 0.0,
+            "fukusai3": 0.0
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825135546",
+        "y_true": {
+            "shushoku": 0.0,
+            "shusai": 0.0,
+            "fukusai1": 0.0,
+            "fukusai2": 0.0,
+            "fukusai3": 0.0
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825135553",
+        "y_true": {
+            "shushoku": 0.0,
+            "shusai": 0.0,
+            "fukusai1": 0.0,
+            "fukusai2": 0.0,
+            "fukusai3": 0.0
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825141959",
+        "y_true": {
+            "shushoku": 0.8,
+            "shusai": 0.8,
+            "fukusai1": 0.8,
+            "fukusai2": 0.8,
+            "fukusai3": 0.8
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825142005",
+        "y_true": {
+            "shushoku": 0.8,
+            "shusai": 0.8,
+            "fukusai1": 0.8,
+            "fukusai2": 0.8,
+            "fukusai3": 0.8
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825142009",
+        "y_true": {
+            "shushoku": 0.8,
+            "shusai": 0.8,
+            "fukusai1": 0.8,
+            "fukusai2": 0.8,
+            "fukusai3": 0.8
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825142013",
+        "y_true": {
+            "shushoku": 0.8,
+            "shusai": 0.8,
+            "fukusai1": 0.8,
+            "fukusai2": 0.8,
+            "fukusai3": 0.8
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825142016",
+        "y_true": {
+            "shushoku": 0.8,
+            "shusai": 0.8,
+            "fukusai1": 0.8,
+            "fukusai2": 0.8,
+            "fukusai3": 0.8
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825142020",
+        "y_true": {
+            "shushoku": 0.8,
+            "shusai": 0.8,
+            "fukusai1": 0.8,
+            "fukusai2": 0.8,
+            "fukusai3": 0.8
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825142026",
+        "y_true": {
+            "shushoku": 0.8,
+            "shusai": 0.8,
+            "fukusai1": 0.8,
+            "fukusai2": 0.8,
+            "fukusai3": 0.8
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825142029",
+        "y_true": {
+            "shushoku": 0.8,
+            "shusai": 0.8,
+            "fukusai1": 0.8,
+            "fukusai2": 0.8,
+            "fukusai3": 0.8
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825142033",
+        "y_true": {
+            "shushoku": 0.8,
+            "shusai": 0.8,
+            "fukusai1": 0.8,
+            "fukusai2": 0.8,
+            "fukusai3": 0.8
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825142037",
+        "y_true": {
+            "shushoku": 0.8,
+            "shusai": 0.8,
+            "fukusai1": 0.8,
+            "fukusai2": 0.8,
+            "fukusai3": 0.8
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825142042",
+        "y_true": {
+            "shushoku": 0.8,
+            "shusai": 0.8,
+            "fukusai1": 0.8,
+            "fukusai2": 0.8,
+            "fukusai3": 0.8
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825142048",
+        "y_true": {
+            "shushoku": 0.8,
+            "shusai": 0.8,
+            "fukusai1": 0.8,
+            "fukusai2": 0.8,
+            "fukusai3": 0.8
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825142053",
+        "y_true": {
+            "shushoku": 0.8,
+            "shusai": 0.8,
+            "fukusai1": 0.8,
+            "fukusai2": 0.8,
+            "fukusai3": 0.8
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825142056",
+        "y_true": {
+            "shushoku": 0.8,
+            "shusai": 0.8,
+            "fukusai1": 0.8,
+            "fukusai2": 0.8,
+            "fukusai3": 0.8
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825142101",
+        "y_true": {
+            "shushoku": 0.8,
+            "shusai": 0.8,
+            "fukusai1": 0.8,
+            "fukusai2": 0.8,
+            "fukusai3": 0.8
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825142105",
+        "y_true": {
+            "shushoku": 0.8,
+            "shusai": 0.8,
+            "fukusai1": 0.8,
+            "fukusai2": 0.8,
+            "fukusai3": 0.8
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825142109",
+        "y_true": {
+            "shushoku": 0.8,
+            "shusai": 0.8,
+            "fukusai1": 0.8,
+            "fukusai2": 0.8,
+            "fukusai3": 0.8
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825142114",
+        "y_true": {
+            "shushoku": 0.8,
+            "shusai": 0.8,
+            "fukusai1": 0.8,
+            "fukusai2": 0.8,
+            "fukusai3": 0.8
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825142120",
+        "y_true": {
+            "shushoku": 0.8,
+            "shusai": 0.8,
+            "fukusai1": 0.8,
+            "fukusai2": 0.8,
+            "fukusai3": 0.8
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825142126",
+        "y_true": {
+            "shushoku": 0.8,
+            "shusai": 0.8,
+            "fukusai1": 0.8,
+            "fukusai2": 0.8,
+            "fukusai3": 0.8
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825142151",
+        "y_true": {
+            "shushoku": 0.8,
+            "shusai": 0.8,
+            "fukusai1": 0.8,
+            "fukusai2": 0.8,
+            "fukusai3": 0.8
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825142154",
+        "y_true": {
+            "shushoku": 0.8,
+            "shusai": 0.8,
+            "fukusai1": 0.8,
+            "fukusai2": 0.8,
+            "fukusai3": 0.8
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825142159",
+        "y_true": {
+            "shushoku": 0.8,
+            "shusai": 0.8,
+            "fukusai1": 0.8,
+            "fukusai2": 0.8,
+            "fukusai3": 0.8
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825141300",
+        "y_true": {
+            "shushoku": 0.6,
+            "shusai": 0.6,
+            "fukusai1": 0.6,
+            "fukusai2": 0.6,
+            "fukusai3": 0.6
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825141307",
+        "y_true": {
+            "shushoku": 0.6,
+            "shusai": 0.6,
+            "fukusai1": 0.6,
+            "fukusai2": 0.6,
+            "fukusai3": 0.6
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825141311",
+        "y_true": {
+            "shushoku": 0.6,
+            "shusai": 0.6,
+            "fukusai1": 0.6,
+            "fukusai2": 0.6,
+            "fukusai3": 0.6
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825141315",
+        "y_true": {
+            "shushoku": 0.6,
+            "shusai": 0.6,
+            "fukusai1": 0.6,
+            "fukusai2": 0.6,
+            "fukusai3": 0.6
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825141321",
+        "y_true": {
+            "shushoku": 0.6,
+            "shusai": 0.6,
+            "fukusai1": 0.6,
+            "fukusai2": 0.6,
+            "fukusai3": 0.6
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825141327",
+        "y_true": {
+            "shushoku": 0.6,
+            "shusai": 0.6,
+            "fukusai1": 0.6,
+            "fukusai2": 0.6,
+            "fukusai3": 0.6
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825141330",
+        "y_true": {
+            "shushoku": 0.6,
+            "shusai": 0.6,
+            "fukusai1": 0.6,
+            "fukusai2": 0.6,
+            "fukusai3": 0.6
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825141333",
+        "y_true": {
+            "shushoku": 0.6,
+            "shusai": 0.6,
+            "fukusai1": 0.6,
+            "fukusai2": 0.6,
+            "fukusai3": 0.6
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825141338",
+        "y_true": {
+            "shushoku": 0.6,
+            "shusai": 0.6,
+            "fukusai1": 0.6,
+            "fukusai2": 0.6,
+            "fukusai3": 0.6
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825141342",
+        "y_true": {
+            "shushoku": 0.6,
+            "shusai": 0.6,
+            "fukusai1": 0.6,
+            "fukusai2": 0.6,
+            "fukusai3": 0.6
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825141348",
+        "y_true": {
+            "shushoku": 0.6,
+            "shusai": 0.6,
+            "fukusai1": 0.6,
+            "fukusai2": 0.6,
+            "fukusai3": 0.6
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825141353",
+        "y_true": {
+            "shushoku": 0.6,
+            "shusai": 0.6,
+            "fukusai1": 0.6,
+            "fukusai2": 0.6,
+            "fukusai3": 0.6
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825141357",
+        "y_true": {
+            "shushoku": 0.6,
+            "shusai": 0.6,
+            "fukusai1": 0.6,
+            "fukusai2": 0.6,
+            "fukusai3": 0.6
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825141402",
+        "y_true": {
+            "shushoku": 0.6,
+            "shusai": 0.6,
+            "fukusai1": 0.6,
+            "fukusai2": 0.6,
+            "fukusai3": 0.6
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825141406",
+        "y_true": {
+            "shushoku": 0.6,
+            "shusai": 0.6,
+            "fukusai1": 0.6,
+            "fukusai2": 0.6,
+            "fukusai3": 0.6
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825141410",
+        "y_true": {
+            "shushoku": 0.6,
+            "shusai": 0.6,
+            "fukusai1": 0.6,
+            "fukusai2": 0.6,
+            "fukusai3": 0.6
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825141413",
+        "y_true": {
+            "shushoku": 0.6,
+            "shusai": 0.6,
+            "fukusai1": 0.6,
+            "fukusai2": 0.6,
+            "fukusai3": 0.6
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825141416",
+        "y_true": {
+            "shushoku": 0.6,
+            "shusai": 0.6,
+            "fukusai1": 0.6,
+            "fukusai2": 0.6,
+            "fukusai3": 0.6
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825141420",
+        "y_true": {
+            "shushoku": 0.6,
+            "shusai": 0.6,
+            "fukusai1": 0.6,
+            "fukusai2": 0.6,
+            "fukusai3": 0.6
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825141445",
+        "y_true": {
+            "shushoku": 0.6,
+            "shusai": 0.6,
+            "fukusai1": 0.6,
+            "fukusai2": 0.6,
+            "fukusai3": 0.6
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825141451",
+        "y_true": {
+            "shushoku": 0.6,
+            "shusai": 0.6,
+            "fukusai1": 0.6,
+            "fukusai2": 0.6,
+            "fukusai3": 0.6
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825141501",
+        "y_true": {
+            "shushoku": 0.6,
+            "shusai": 0.6,
+            "fukusai1": 0.6,
+            "fukusai2": 0.6,
+            "fukusai3": 0.6
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825140745",
+        "y_true": {
+            "shushoku": 0.4,
+            "shusai": 0.4,
+            "fukusai1": 0.4,
+            "fukusai2": 0.4,
+            "fukusai3": 0.4
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825140752",
+        "y_true": {
+            "shushoku": 0.4,
+            "shusai": 0.4,
+            "fukusai1": 0.4,
+            "fukusai2": 0.4,
+            "fukusai3": 0.4
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825140758",
+        "y_true": {
+            "shushoku": 0.4,
+            "shusai": 0.4,
+            "fukusai1": 0.4,
+            "fukusai2": 0.4,
+            "fukusai3": 0.4
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825140803",
+        "y_true": {
+            "shushoku": 0.4,
+            "shusai": 0.4,
+            "fukusai1": 0.4,
+            "fukusai2": 0.4,
+            "fukusai3": 0.4
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825140807",
+        "y_true": {
+            "shushoku": 0.4,
+            "shusai": 0.4,
+            "fukusai1": 0.4,
+            "fukusai2": 0.4,
+            "fukusai3": 0.4
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825140812",
+        "y_true": {
+            "shushoku": 0.4,
+            "shusai": 0.4,
+            "fukusai1": 0.4,
+            "fukusai2": 0.4,
+            "fukusai3": 0.4
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825140816",
+        "y_true": {
+            "shushoku": 0.4,
+            "shusai": 0.4,
+            "fukusai1": 0.4,
+            "fukusai2": 0.4,
+            "fukusai3": 0.4
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825140821",
+        "y_true": {
+            "shushoku": 0.4,
+            "shusai": 0.4,
+            "fukusai1": 0.4,
+            "fukusai2": 0.4,
+            "fukusai3": 0.4
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825140824",
+        "y_true": {
+            "shushoku": 0.4,
+            "shusai": 0.4,
+            "fukusai1": 0.4,
+            "fukusai2": 0.4,
+            "fukusai3": 0.4
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825140830",
+        "y_true": {
+            "shushoku": 0.4,
+            "shusai": 0.4,
+            "fukusai1": 0.4,
+            "fukusai2": 0.4,
+            "fukusai3": 0.4
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825140837",
+        "y_true": {
+            "shushoku": 0.4,
+            "shusai": 0.4,
+            "fukusai1": 0.4,
+            "fukusai2": 0.4,
+            "fukusai3": 0.4
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825140841",
+        "y_true": {
+            "shushoku": 0.4,
+            "shusai": 0.4,
+            "fukusai1": 0.4,
+            "fukusai2": 0.4,
+            "fukusai3": 0.4
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825140846",
+        "y_true": {
+            "shushoku": 0.4,
+            "shusai": 0.4,
+            "fukusai1": 0.4,
+            "fukusai2": 0.4,
+            "fukusai3": 0.4
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825140849",
+        "y_true": {
+            "shushoku": 0.4,
+            "shusai": 0.4,
+            "fukusai1": 0.4,
+            "fukusai2": 0.4,
+            "fukusai3": 0.4
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825140853",
+        "y_true": {
+            "shushoku": 0.4,
+            "shusai": 0.4,
+            "fukusai1": 0.4,
+            "fukusai2": 0.4,
+            "fukusai3": 0.4
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825140856",
+        "y_true": {
+            "shushoku": 0.4,
+            "shusai": 0.4,
+            "fukusai1": 0.4,
+            "fukusai2": 0.4,
+            "fukusai3": 0.4
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825140859",
+        "y_true": {
+            "shushoku": 0.4,
+            "shusai": 0.4,
+            "fukusai1": 0.4,
+            "fukusai2": 0.4,
+            "fukusai3": 0.4
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825140903",
+        "y_true": {
+            "shushoku": 0.4,
+            "shusai": 0.4,
+            "fukusai1": 0.4,
+            "fukusai2": 0.4,
+            "fukusai3": 0.4
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825140907",
+        "y_true": {
+            "shushoku": 0.4,
+            "shusai": 0.4,
+            "fukusai1": 0.4,
+            "fukusai2": 0.4,
+            "fukusai3": 0.4
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825140910",
+        "y_true": {
+            "shushoku": 0.4,
+            "shusai": 0.4,
+            "fukusai1": 0.4,
+            "fukusai2": 0.4,
+            "fukusai3": 0.4
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825140034",
+        "y_true": {
+            "shushoku": 0.2,
+            "shusai": 0.2,
+            "fukusai1": 0.2,
+            "fukusai2": 0.2,
+            "fukusai3": 0.2
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825140044",
+        "y_true": {
+            "shushoku": 0.2,
+            "shusai": 0.2,
+            "fukusai1": 0.2,
+            "fukusai2": 0.2,
+            "fukusai3": 0.2
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825140050",
+        "y_true": {
+            "shushoku": 0.2,
+            "shusai": 0.2,
+            "fukusai1": 0.2,
+            "fukusai2": 0.2,
+            "fukusai3": 0.2
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825140054",
+        "y_true": {
+            "shushoku": 0.2,
+            "shusai": 0.2,
+            "fukusai1": 0.2,
+            "fukusai2": 0.2,
+            "fukusai3": 0.2
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825140100",
+        "y_true": {
+            "shushoku": 0.2,
+            "shusai": 0.2,
+            "fukusai1": 0.2,
+            "fukusai2": 0.2,
+            "fukusai3": 0.2
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825140102",
+        "y_true": {
+            "shushoku": 0.2,
+            "shusai": 0.2,
+            "fukusai1": 0.2,
+            "fukusai2": 0.2,
+            "fukusai3": 0.2
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825140106",
+        "y_true": {
+            "shushoku": 0.2,
+            "shusai": 0.2,
+            "fukusai1": 0.2,
+            "fukusai2": 0.2,
+            "fukusai3": 0.2
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825140109",
+        "y_true": {
+            "shushoku": 0.2,
+            "shusai": 0.2,
+            "fukusai1": 0.2,
+            "fukusai2": 0.2,
+            "fukusai3": 0.2
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825140114",
+        "y_true": {
+            "shushoku": 0.2,
+            "shusai": 0.2,
+            "fukusai1": 0.2,
+            "fukusai2": 0.2,
+            "fukusai3": 0.2
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825140118",
+        "y_true": {
+            "shushoku": 0.2,
+            "shusai": 0.2,
+            "fukusai1": 0.2,
+            "fukusai2": 0.2,
+            "fukusai3": 0.2
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825140123",
+        "y_true": {
+            "shushoku": 0.2,
+            "shusai": 0.2,
+            "fukusai1": 0.2,
+            "fukusai2": 0.2,
+            "fukusai3": 0.2
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825140128",
+        "y_true": {
+            "shushoku": 0.2,
+            "shusai": 0.2,
+            "fukusai1": 0.2,
+            "fukusai2": 0.2,
+            "fukusai3": 0.2
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825140132",
+        "y_true": {
+            "shushoku": 0.2,
+            "shusai": 0.2,
+            "fukusai1": 0.2,
+            "fukusai2": 0.2,
+            "fukusai3": 0.2
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825140135",
+        "y_true": {
+            "shushoku": 0.2,
+            "shusai": 0.2,
+            "fukusai1": 0.2,
+            "fukusai2": 0.2,
+            "fukusai3": 0.2
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825140140",
+        "y_true": {
+            "shushoku": 0.2,
+            "shusai": 0.2,
+            "fukusai1": 0.2,
+            "fukusai2": 0.2,
+            "fukusai3": 0.2
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825140157",
+        "y_true": {
+            "shushoku": 0.2,
+            "shusai": 0.2,
+            "fukusai1": 0.2,
+            "fukusai2": 0.2,
+            "fukusai3": 0.2
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825140201",
+        "y_true": {
+            "shushoku": 0.2,
+            "shusai": 0.2,
+            "fukusai1": 0.2,
+            "fukusai2": 0.2,
+            "fukusai3": 0.2
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825140205",
+        "y_true": {
+            "shushoku": 0.2,
+            "shusai": 0.2,
+            "fukusai1": 0.2,
+            "fukusai2": 0.2,
+            "fukusai3": 0.2
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825140209",
+        "y_true": {
+            "shushoku": 0.2,
+            "shusai": 0.2,
+            "fukusai1": 0.2,
+            "fukusai2": 0.2,
+            "fukusai3": 0.2
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825140213",
+        "y_true": {
+            "shushoku": 0.2,
+            "shusai": 0.2,
+            "fukusai1": 0.2,
+            "fukusai2": 0.2,
+            "fukusai3": 0.2
+        }
+    },
+    {
+        "target_file": "hospital_A_P_20260825140217",
+        "y_true": {
+            "shushoku": 0.2,
+            "shusai": 0.2,
+            "fukusai1": 0.2,
+            "fukusai2": 0.2,
+            "fukusai3": 0.2
+        }
+    }
+]
