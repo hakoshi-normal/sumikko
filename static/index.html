@@ -114,7 +114,11 @@
   <div class="panel">
     <h2>推定結果の評価（final_results.json × measured_results.json）</h2>
     <div class="row">
+      <label>実測データ:
+        <select id="measured-sel"></select>
+      </label>
       <button class="act" id="btn-eval">評価実行</button>
+      <button class="sub" id="btn-reload-measured">一覧更新</button>
     </div>
     <div class="msg" id="msg4"></div>
   </div>
@@ -196,22 +200,31 @@ function renderDetectResult(r) {
   html += `<img class="tray" src="${r.tray_image}"><div class="dish-row">`;
   r.setting.forEach((s, i) => {
     const opts = PLATE_NAMES.map(n => `<option ${n===s.plate_name?"selected":""}>${n}</option>`).join("");
+    const use = s.use !== false;
     html += `<div class="dish">
       <img class="crop" src="${r.crops[i]}"><br>
       <b>#${i}</b><br>
-      <select data-i="${i}" class="pname">${opts}</select><br>
-      <label><input type="checkbox" class="nansai" data-i="${i}" ${s.nansai?"checked":""}> 軟菜食</label>
+      <label><input type="checkbox" class="use" data-i="${i}" ${use?"checked":""}> 使用する</label><br>
+      <select data-i="${i}" class="pname" ${use?"":"disabled"}>${opts}</select><br>
+      <label><input type="checkbox" class="nansai" data-i="${i}" ${s.nansai?"checked":""} ${use?"":"disabled"}> 軟菜食</label>
       <div style="color:#999;font-size:11px">var=${r.depth_var[i].toExponential(2)}</div>
     </div>`;
   });
   html += `</div><div class="row"><button class="act save-setting">設定を保存</button><span class="msg"></span></div>`;
   div.innerHTML = html;
+  // 「使用する」チェックで選択肢を有効/無効化
+  div.querySelectorAll(".use").forEach(chk => chk.onchange = () => {
+    const i = chk.dataset.i;
+    div.querySelector(`.pname[data-i="${i}"]`).disabled = !chk.checked;
+    div.querySelector(`.nansai[data-i="${i}"]`).disabled = !chk.checked;
+  });
   div.querySelector(".save-setting").onclick = async () => {
     const [date, tray] = r.key.split("_");
     const setting = [...div.querySelectorAll(".pname")].map(sel => ({
       plate_number: +sel.dataset.i,
       plate_name: sel.value,
       nansai: div.querySelector(`.nansai[data-i="${sel.dataset.i}"]`).checked,
+      use: div.querySelector(`.use[data-i="${sel.dataset.i}"]`).checked,
     }));
     try {
       await post("/api/plate_setting", {date, tray, setting});
@@ -316,18 +329,35 @@ document.getElementById("btn-estimate").onclick = async () => {
 };
 
 // ---- ページ4: 評価 ----
+async function reloadMeasured() {
+  const sel = document.getElementById("measured-sel");
+  const prev = sel.value;
+  const r = await api("/api/measured_files");
+  sel.innerHTML = r.files.length
+    ? r.files.map(f => `<option value="${f}">measured_results${f ? "_" + f : ""}.json</option>`).join("")
+    : '<option value="">（なし）</option>';
+  if (r.files.includes(prev)) sel.value = prev;
+}
+document.getElementById("btn-reload-measured").onclick = reloadMeasured;
+
 document.getElementById("btn-eval").onclick = async () => {
   const {targets} = getSelection();
+  const mid = document.getElementById("measured-sel").value;
   const msg = document.getElementById("msg4"), out = document.getElementById("eval-results");
   msg.className = "msg"; msg.textContent = "評価中..."; out.innerHTML = "";
   try {
-    const r = await api("/api/results");
-    msg.textContent = (r.has_measured ? "measured_results.json を参照" : "measured_results.json なし（推定値のみ表示）");
-    const sel = targets.length ? new Set(targets.map(t=>`${t.date}_${t.tray}`)) : null;
-    const rows = r.rows.filter(x => !sel || sel.has(x.plate_id));
+    const keys = targets.map(t=>`${t.date}_${t.tray}`).join(",");
+    const r = await api("/api/results?measured=" + encodeURIComponent(mid) + "&keys=" + encodeURIComponent(keys));
+    const fname = "measured_results" + (mid ? "_" + mid : "") + ".json";
+    msg.textContent = (r.has_measured ? fname + " を参照" : fname + " なし（推定値のみ表示）");
+    const rows = r.rows;
     let html = "";
-    for (const [label, cm] of Object.entries(r.cm))
-      html += `<div class="panel"><h2>${label==="nansai"?"軟菜食":"固形食"}: R²=${cm.r2.toFixed(3)}, MAE=${cm.mae.toFixed(3)}, N=${cm.n}</h2><img class="cm" src="${cm.url}"></div>`;
+    const CM_LABEL = {all:"全体", nansai:"軟菜食", solid:"固形食"};
+    for (const label of ["all","nansai","solid"]) {
+      const cm = r.cm[label];
+      if (!cm) continue;
+      html += `<div class="panel"><h2>${CM_LABEL[label]}: R²=${cm.r2.toFixed(3)}, MAE=${cm.mae.toFixed(3)}, N=${cm.n}</h2><img class="cm" src="${cm.url}"></div>`;
+    }
     html += `<div class="panel"><table><tr><th>対象</th><th>食種</th><th>タイプ</th><th>target_file</th><th>軟菜</th><th>推定値(中央値)</th><th>試行数</th><th>正解値</th><th>誤差</th></tr>`;
     for (const x of rows) {
       const pred = x.y_pred.length ? x.y_pred[0].toFixed(3) : "-";
@@ -346,6 +376,7 @@ document.getElementById("btn-eval").onclick = async () => {
   const cfg = await api("/api/config");
   PLATE_NAMES = cfg.plate_names;
   renderSelector();
+  reloadMeasured();
 })();
 </script>
 </body>

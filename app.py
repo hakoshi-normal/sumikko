@@ -364,6 +364,7 @@ def detect_reference(date, tray, use_cache=True):
                           or (PLATE_NAMES[i] if i < len(PLATE_NAMES) else f"plate_{i}"),
             "plate_number": i,
             "nansai": bool(prev.get(i, {}).get("nansai", binary[i])),
+            "use": bool(prev.get(i, {}).get("use", True)),
         }
         for i in range(n)
     ]
@@ -426,9 +427,13 @@ def classify_tray(date, tray, type1s=None, use_cache=True):
     if not os.path.exists(setting_path):
         raise HTTPException(404, f"{key}: 基準データ(plate_setting.json)がありません。先に食器検出を実行してください。")
     base_config = json.load(open(setting_path, encoding="utf-8"))
-    idx_to_plate = {d["plate_number"]: d["plate_name"] for d in base_config}
+    # 使用フラグが有効な基準食器のみマッチング対象とする
+    used = [d for d in base_config if d.get("use", True)]
+    idx_to_plate = {i: d["plate_name"] for i, d in enumerate(used)}
 
-    base_images = sorted(glob.glob(os.path.join(ref_dir, "plate_*.png")))
+    base_images = [os.path.join(ref_dir, f"plate_{d['plate_number']}.png")
+                   for d in used]
+    base_images = [p for p in base_images if os.path.exists(p)]
     base_features = [calc_feature(cv2.imread(p)) for p in base_images]
     gt_count = len(base_images)
     if gt_count == 0:
@@ -636,6 +641,7 @@ def estimate_tray(date, tray, use_unet=True, use_cache=True,
         raise HTTPException(404, f"{key}: 基準データがありません")
     base_config = json.load(open(setting_path, encoding="utf-8"))
     nansai_map = {d["plate_name"]: d["nansai"] for d in base_config}
+    used_meals = {d["plate_name"] for d in base_config if d.get("use", True)}
 
     records = []
     meals_dir = os.path.join(PLATE_IMG_DIR, key)
@@ -643,7 +649,7 @@ def estimate_tray(date, tray, use_unet=True, use_cache=True,
         raise HTTPException(404, f"{key}: 分類済み食器がありません。先に分類を実行してください。")
 
     meals = [m for m in sorted(os.listdir(meals_dir))
-             if os.path.isdir(os.path.join(meals_dir, m))]
+             if os.path.isdir(os.path.join(meals_dir, m)) and m in used_meals]
     # 進捗用に対象数を事前計算
     total = 0
     for meal in meals:
@@ -774,10 +780,18 @@ def load_json_list(path):
         return json.load(f)
 
 
-def evaluate_results(selected_keys=None):
-    """final_results.json と measured_results.json を突合し統計値を返す"""
+def measured_path(identifier=None):
+    """識別子からmeasured_resultsファイルのパスを返す。
+    識別子なし/空文字 -> measured_results.json"""
+    if identifier:
+        return os.path.join(BASE_DIR, f"measured_results_{identifier}.json")
+    return MEASURED_RESULTS
+
+
+def evaluate_results(selected_keys=None, measured_id=None):
+    """final_results.json と measured_results*.json を突合し統計値を返す"""
     preds = load_json_list(FINAL_RESULTS)
-    measured = load_json_list(MEASURED_RESULTS)
+    measured = load_json_list(measured_path(measured_id))
 
     # measured を索引化
     # y_true は「食事摂取量割合 (0-1)」。スカラー/リスト/{食種:値} を許容。
@@ -849,15 +863,16 @@ def evaluate_results(selected_keys=None):
     imgs = {}
     from datetime import datetime
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    for label, flag in [("nansai", True), ("solid", False)]:
+    for label, flag in [("all", None), ("nansai", True), ("solid", False)]:
         tt, pp = [], []
         for r in rows:
-            if r["nansai"] == flag and r["y_true"] and len(r["y_true"]) == len(r["y_pred"]):
+            if (flag is None or r["nansai"] == flag) \
+                    and r["y_true"] and len(r["y_true"]) == len(r["y_pred"]):
                 tt.extend(r["y_true"])
                 pp.extend(r["y_pred"])
         if len(tt) >= 2:
             r2, mae = calc_score(tt, pp)
-            name = "軟菜食" if flag else "固形食"
+            name = {"all": "全体", "nansai": "軟菜食", "solid": "固形食"}[label]
             path = os.path.join(RESULT_DIR, f"cm_{label}_{ts}.png")
             draw_confusion_matrix(tt, pp, f"{name}推定結果", r2, mae, path)
             imgs[label] = {"path": os.path.relpath(path, BASE_DIR), "r2": r2, "mae": mae, "n": len(tt)}
@@ -1030,19 +1045,25 @@ def api_estimate(req: EstimateReq):
     return {"results": out, "saved": "final_results.json"}
 
 
+@app.get("/api/measured_files")
+def api_measured_files():
+    """measured_results*.json の識別子一覧を返す"""
+    ids = []
+    for p in sorted(glob.glob(os.path.join(BASE_DIR, "measured_results*.json"))):
+        name = os.path.basename(p)[:-5]
+        ids.append(name[len("measured_results"):].lstrip("_"))
+    return {"files": ids}
+
+
 @app.get("/api/results")
-def api_results(date: Optional[str] = None, tray: Optional[str] = None):
-    keys = None
-    if date and tray:
-        keys = {tray_key(date, tray)}
-    elif date:
-        keys = {k for k in
-                (tray_key(date, t) for t in scan_data().get(date, {}).keys())}
-    res = evaluate_results(keys)
+def api_results(measured: Optional[str] = None, keys: Optional[str] = None):
+    sel = set(keys.split(",")) if keys else None
+    res = evaluate_results(sel, measured_id=measured or None)
     for label, cm in res["cm"].items():
         cm["url"] = "/api/file?path=" + cm["path"].replace("\\", "/")
-    res["has_measured"] = os.path.exists(MEASURED_RESULTS)
+    res["has_measured"] = os.path.exists(measured_path(measured or None))
     res["has_final"] = os.path.exists(FINAL_RESULTS)
+    res["measured"] = measured or ""
     return res
 
 
