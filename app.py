@@ -286,22 +286,22 @@ def rotate_by_region(img, depth, cx, cy, W, H):
     return np.rot90(img, k=k), np.rot90(depth, k=k) if depth is not None else None, k
 
 
-def yolo_boxes(image_path, use_cache=True):
-    """YOLO検出(信頼度順上位5件)。キャッシュ対応。"""
-    key = hashlib.md5(os.path.abspath(image_path).encode()).hexdigest()
+def yolo_boxes(image_path, use_cache=True, conf=0.25):
+    """YOLO検出(信頼度conf以上、信頼度降順)。キャッシュ対応。"""
+    key = hashlib.md5(f"{os.path.abspath(image_path)}|{conf}".encode()).hexdigest()
     cpath = os.path.join(CACHE_DIR, "boxes", f"{key}.npy")
     if use_cache and os.path.exists(cpath):
         return np.load(cpath)
-    results = get_yolo()(image_path, verbose=False)
+    results = get_yolo()(image_path, conf=conf, verbose=False)
     boxes = results[0].boxes
     sorted_boxes = boxes[boxes.conf.argsort(descending=True)]
-    arr = sorted_boxes[:5].xyxy.cpu().numpy()
+    arr = sorted_boxes.xyxy.cpu().numpy()  # 検出された全食器を返す
     os.makedirs(os.path.dirname(cpath), exist_ok=True)
     np.save(cpath, arr)
     return arr
 
 
-def detect_reference(date, tray, use_cache=True):
+def detect_reference(date, tray, use_cache=True, conf=0.25):
     """10割画像から食器を検出し work/test_data/{date}_{tray}/ に保存"""
     prefixes = list_captures(date, "10", tray, "10")
     if not prefixes:
@@ -313,7 +313,7 @@ def detect_reference(date, tray, use_cache=True):
     if img_path is None or depth is None:
         raise HTTPException(404, f"{date}/{tray}: 10割データが不完全です")
 
-    boxes = yolo_boxes(img_path, use_cache)
+    boxes = yolo_boxes(img_path, use_cache, conf)
     img = cv2.imread(img_path)
     H, W = img.shape[:2]
 
@@ -388,16 +388,10 @@ def detect_reference(date, tray, use_cache=True):
 # 特徴量マッチング (ハンガリアン)
 # ---------------------------------------------------------------------------
 def calc_feature(img):
+    """食器の複合特徴量: [面積, 平均彩度]"""
     h, w = img.shape[:2]
-    area = h * w
-    white_mask = (img[:, :, 0] > 180) & (img[:, :, 1] > 180) & (img[:, :, 2] > 180)
-    white_ratio = white_mask.mean()
     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-    mean_s = hsv[:, :, 1].mean()
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    edge = cv2.Canny(gray, 50, 150)
-    edge_ratio = np.count_nonzero(edge) / edge.size
-    return np.array([area, white_ratio, mean_s, edge_ratio], dtype=np.float32)
+    return np.array([h * w, hsv[:, :, 1].mean()], dtype=np.float32)
 
 
 def get_matched_index(features1, features2):
@@ -409,7 +403,7 @@ def get_matched_index(features1, features2):
     std[std < 1e-6] = 1.0
     features1 = (features1 - mean) / std
     features2 = (features2 - mean) / std
-    weights = np.array([1.0, 0.0, 1.0, 0.0], dtype=np.float32)
+    weights = np.array([1.0, 1.0], dtype=np.float32)
     cost = np.zeros((len(features2), len(features1)), dtype=np.float32)
     for i, f2 in enumerate(features2):
         for j, f1 in enumerate(features1):
@@ -418,7 +412,7 @@ def get_matched_index(features1, features2):
     return col_ind.tolist()
 
 
-def classify_tray(date, tray, type1s=None, use_cache=True):
+def classify_tray(date, tray, type1s=None, use_cache=True, conf=0.25):
     """対象トレーの食器を分類し plate_images/ に保存。
     type1s: 任意名タイプ1のリスト (None=全て)。0/10は常に対象。"""
     key = tray_key(date, tray)
@@ -464,7 +458,7 @@ def classify_tray(date, tray, type1s=None, use_cache=True):
                 continue
             img = cv2.imread(img_path)
             H, W = img.shape[:2]
-            boxes = yolo_boxes(img_path, use_cache)
+            boxes = yolo_boxes(img_path, use_cache, conf)
             status = "ok"
             if len(boxes) != gt_count:
                 status = f"warn:検出数{len(boxes)}≠基準{gt_count}"
@@ -747,6 +741,28 @@ def calc_score(y_true, y_pred):
     return float(r2_score(y_true, y_pred)), float(mean_absolute_error(y_true, y_pred))
 
 
+def draw_scatter(y_true, y_pred, title, r2, mae, save_path):
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    plt.rcParams["font.family"] = "sans-serif"
+    plt.rcParams["font.sans-serif"] = [
+        "Meiryo", "Yu Gothic", "Hiragino Sans", "AppleGothic",
+        "Noto Sans CJK JP", "IPAexGothic", "TakaoGothic",
+    ]
+    plt.figure(figsize=(6, 5))
+    plt.scatter(y_true, y_pred, alpha=0.5, s=20)
+    plt.plot([0, 1], [0, 1], "--", color="gray", linewidth=1)
+    plt.xlim(-0.02, 1.02)
+    plt.ylim(-0.02, 1.02)
+    plt.xlabel("実測値", fontsize=12)
+    plt.ylabel("システム推定値", fontsize=12)
+    plt.title(f"{title}\nN={len(y_true)}, R²={r2:.3f}, MAE={mae:.3f}", fontsize=13)
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=200, bbox_inches="tight")
+    plt.close()
+
+
 def draw_confusion_matrix(y_true, y_pred, title, r2, mae, save_path):
     import matplotlib
     matplotlib.use("Agg")
@@ -788,8 +804,10 @@ def measured_path(identifier=None):
     return MEASURED_RESULTS
 
 
-def evaluate_results(selected_keys=None, measured_id=None):
-    """final_results.json と measured_results*.json を突合し統計値を返す"""
+def evaluate_results(selected_keys=None, measured_id=None,
+                     meals=None, plot="cm"):
+    """final_results.json と measured_results*.json を突合し統計値を返す。
+    meals: 集計対象の食種リスト (None=全て)"""
     preds = load_json_list(FINAL_RESULTS)
     measured = load_json_list(measured_path(measured_id))
 
@@ -822,6 +840,8 @@ def evaluate_results(selected_keys=None, measured_id=None):
     for rec in preds:
         pid, pname = rec["plate_id"], rec["plate_name"]
         if selected_keys and pid not in selected_keys:
+            continue
+        if meals and pname not in meals:
             continue
         date, tray = pid.split("_", 1)
         sp = os.path.join(TEST_DATA_DIR, pid, "plate_setting.json")
@@ -859,23 +879,22 @@ def evaluate_results(selected_keys=None, measured_id=None):
             row["r2"], row["mae"] = None, None
         rows.append(row)
 
-    # 軟菜/固形で集約して混同行列を生成
+    # 選択対象・食種で一括集計してグラフを生成
+    tt, pp = [], []
+    for r in rows:
+        if r["y_true"] and len(r["y_true"]) == len(r["y_pred"]):
+            tt.extend(r["y_true"])
+            pp.extend(r["y_pred"])
     imgs = {}
-    from datetime import datetime
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    for label, flag in [("all", None), ("nansai", True), ("solid", False)]:
-        tt, pp = [], []
-        for r in rows:
-            if (flag is None or r["nansai"] == flag) \
-                    and r["y_true"] and len(r["y_true"]) == len(r["y_pred"]):
-                tt.extend(r["y_true"])
-                pp.extend(r["y_pred"])
-        if len(tt) >= 2:
-            r2, mae = calc_score(tt, pp)
-            name = {"all": "全体", "nansai": "軟菜食", "solid": "固形食"}[label]
-            path = os.path.join(RESULT_DIR, f"cm_{label}_{ts}.png")
-            draw_confusion_matrix(tt, pp, f"{name}推定結果", r2, mae, path)
-            imgs[label] = {"path": os.path.relpath(path, BASE_DIR), "r2": r2, "mae": mae, "n": len(tt)}
+    if len(tt) >= 2:
+        from datetime import datetime
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        r2, mae = calc_score(tt, pp)
+        draw = draw_scatter if plot == "scatter" else draw_confusion_matrix
+        path = os.path.join(RESULT_DIR, f"{plot}_{ts}.png")
+        draw(tt, pp, "摂取量推定結果", r2, mae, path)
+        imgs["result"] = {"path": os.path.relpath(path, BASE_DIR),
+                          "r2": r2, "mae": mae, "n": len(tt)}
     return {"rows": rows, "cm": imgs}
 
 
@@ -885,10 +904,19 @@ def evaluate_results(selected_keys=None, measured_id=None):
 app = FastAPI(title="食事摂取量推定システム")
 
 
+@app.middleware("http")
+async def no_store(request, call_next):
+    """ブラウザキャッシュによる画面の古い表示を防ぐ"""
+    resp = await call_next(request)
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
 class DetectReq(BaseModel):
     targets: List[dict]  # [{date, tray}]
     type1s: List[str] = []  # 任意名タイプ1 (空=全て)
     use_cache: bool = True
+    conf: float = 0.25  # YOLO信頼度しきい値
 
 
 class SettingReq(BaseModel):
@@ -937,7 +965,7 @@ def api_detect(req: DetectReq):
         date, tray = t["date"], t["tray"]
         try:
             with _lock:
-                res = detect_reference(date, tray, req.use_cache)
+                res = detect_reference(date, tray, req.use_cache, req.conf)
                 # 前処理: 連番深度の平均を事前計算
                 n_mean = precompute_mean_depth(date, tray)
             key = tray_key(date, tray)
@@ -989,7 +1017,8 @@ def api_classify(req: DetectReq):
             with _lock:
                 summary = classify_tray(date, tray,
                                         type1s=req.type1s or None,
-                                        use_cache=req.use_cache)
+                                        use_cache=req.use_cache,
+                                        conf=req.conf)
             out.append({"key": tray_key(date, tray), "ok": True, "summary": summary})
         except HTTPException as e:
             out.append({"key": tray_key(date, tray), "ok": False, "error": e.detail})
@@ -1019,6 +1048,92 @@ def api_classify_result(date: str, tray: str):
             })
         meals.append({"meal": meal, "crops": crops})
     return {"exists": True, "meals": meals}
+
+
+class MoveReq(BaseModel):
+    date: str
+    tray: str
+    from_meal: str
+    to_meal: str
+    stem: str
+
+
+class MoveBulkReq(BaseModel):
+    date: str
+    tray: str
+    to_meal: str
+    moves: List[dict]  # [{from_meal, stem}]
+
+
+def _move_one(key, from_meal, to_meal, stem):
+    """食器を from_meal -> to_meal に移動。
+    移動先に同一stem(=同じトレー撮影)の食器があれば交換(スワップ)する。"""
+    src_dir = os.path.join(PLATE_IMG_DIR, key, from_meal)
+    dst_dir = os.path.join(PLATE_IMG_DIR, key, to_meal)
+    src_meta = os.path.join(src_dir, stem + ".json")
+    if not os.path.exists(src_meta):
+        return False
+    os.makedirs(dst_dir, exist_ok=True)
+
+    # 1. 移動元を一時退避
+    tmp_dir = os.path.join(PLATE_IMG_DIR, key, "__swap_tmp__")
+    os.makedirs(tmp_dir, exist_ok=True)
+    for suffix in [".png", ".json", "_mean.npy"]:
+        s = os.path.join(src_dir, stem + suffix)
+        if os.path.exists(s):
+            shutil.move(s, os.path.join(tmp_dir, stem + suffix))
+
+    # 2. 移動先に同一stem(同じトレー撮影)があれば from_meal へ交換
+    if os.path.exists(os.path.join(dst_dir, stem + ".json")):
+        for suffix in [".png", ".json", "_mean.npy"]:
+            d = os.path.join(dst_dir, stem + suffix)
+            if os.path.exists(d):
+                shutil.move(d, os.path.join(src_dir, stem + suffix))
+        meta_p = os.path.join(src_dir, stem + ".json")
+        meta = json.load(open(meta_p, encoding="utf-8"))
+        meta["meal"] = from_meal
+        with open(meta_p, "w", encoding="utf-8") as f:
+            json.dump(meta, f, indent=4, ensure_ascii=False)
+
+    # 3. 退避した本体を to_meal へ
+    for suffix in [".png", ".json", "_mean.npy"]:
+        t = os.path.join(tmp_dir, stem + suffix)
+        if os.path.exists(t):
+            shutil.move(t, os.path.join(dst_dir, stem + suffix))
+    meta_p = os.path.join(dst_dir, stem + ".json")
+    meta = json.load(open(meta_p, encoding="utf-8"))
+    meta["meal"] = to_meal
+    with open(meta_p, "w", encoding="utf-8") as f:
+        json.dump(meta, f, indent=4, ensure_ascii=False)
+    try:
+        os.rmdir(tmp_dir)
+    except OSError:
+        pass
+    return True
+
+
+@app.post("/api/move_crops")
+def api_move_crops(req: MoveBulkReq):
+    """複数の分類済み食器を一括で別食種へ移動"""
+    key = tray_key(req.date, req.tray)
+    n = 0
+    for m in req.moves:
+        if m["from_meal"] == req.to_meal:
+            continue
+        if _move_one(key, m["from_meal"], req.to_meal, m["stem"]):
+            n += 1
+            log(f"{key}: {m['stem']} を {m['from_meal']} -> {req.to_meal} に移動")
+    return {"ok": True, "moved": n}
+
+
+@app.post("/api/move_crop")
+def api_move_crop(req: MoveReq):
+    """分類済み食器を別の食種へ移動（work/plate_images 内のファイルを移動）"""
+    key = tray_key(req.date, req.tray)
+    if not _move_one(key, req.from_meal, req.to_meal, req.stem):
+        raise HTTPException(404, "対象の食器データがありません")
+    log(f"{key}: {req.stem} を {req.from_meal} -> {req.to_meal} に移動")
+    return {"ok": True}
 
 
 @app.post("/api/estimate")
@@ -1056,9 +1171,12 @@ def api_measured_files():
 
 
 @app.get("/api/results")
-def api_results(measured: Optional[str] = None, keys: Optional[str] = None):
+def api_results(measured: Optional[str] = None, keys: Optional[str] = None,
+                meals: Optional[str] = None, plot: str = "cm"):
     sel = set(keys.split(",")) if keys else None
-    res = evaluate_results(sel, measured_id=measured or None)
+    meal_set = set(meals.split(",")) if meals else None
+    res = evaluate_results(sel, measured_id=measured or None,
+                           meals=meal_set, plot=plot)
     for label, cm in res["cm"].items():
         cm["url"] = "/api/file?path=" + cm["path"].replace("\\", "/")
     res["has_measured"] = os.path.exists(measured_path(measured or None))

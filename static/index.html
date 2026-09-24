@@ -58,6 +58,10 @@
     <div class="sel-block"><b>日付</b><div id="sel-dates"></div></div>
     <div class="sel-block"><b>トレーID</b><div id="sel-trays"></div></div>
     <div class="sel-block"><b>食後撮影データ</b><div id="sel-names"></div></div>
+    <div class="sel-block"><b>YOLO conf</b>
+      <input type="number" id="conf" value="0.25" min="0.05" max="1" step="0.05" style="width:70px">
+      <div style="font-size:11px;color:#888;margin-top:4px">検出信頼度しきい値（画面1・2共通）</div>
+    </div>
   </div>
   <div id="progress-wrap">
     <div id="progress-bar-bg"><div id="progress-bar"></div></div>
@@ -117,9 +121,16 @@
       <label>実測データ:
         <select id="measured-sel"></select>
       </label>
+      <label>グラフ:
+        <select id="plot-sel">
+          <option value="cm">混同行列</option>
+          <option value="scatter">散布図</option>
+        </select>
+      </label>
       <button class="act" id="btn-eval">評価実行</button>
       <button class="sub" id="btn-reload-measured">一覧更新</button>
     </div>
+    <div class="row">対象食種: <span id="meal-filter"></span></div>
     <div class="msg" id="msg4"></div>
   </div>
   <div id="eval-results"></div>
@@ -130,7 +141,7 @@
 let SCAN = null, PLATE_NAMES = [];
 
 async function api(url, opt) {
-  const r = await fetch(url, opt);
+  const r = await fetch(url, {cache: "no-store", ...(opt||{})});
   if (!r.ok) { const e = await r.json().catch(()=>({})); throw new Error(e.detail||r.statusText); }
   return r.json();
 }
@@ -197,12 +208,12 @@ function renderDetectResult(r) {
   if (!r.ok) { div.innerHTML = `<h2>${r.key}</h2><div class="msg err">${r.error}</div>`; return div; }
   let html = `<h2>${r.key}</h2>`;
   if (r.n_mean_depth !== undefined) html += `<div class="msg">平均深度を ${r.n_mean_depth} 件事前計算しました</div>`;
-  html += `<img class="tray" src="${r.tray_image}"><div class="dish-row">`;
+  html += `<img class="tray" src="${r.tray_image}&_=${Date.now()}"><div class="dish-row">`;
   r.setting.forEach((s, i) => {
     const opts = PLATE_NAMES.map(n => `<option ${n===s.plate_name?"selected":""}>${n}</option>`).join("");
     const use = s.use !== false;
     html += `<div class="dish">
-      <img class="crop" src="${r.crops[i]}"><br>
+      <img class="crop" src="${r.crops[i]}&_=${Date.now()}"><br>
       <b>#${i}</b><br>
       <label><input type="checkbox" class="use" data-i="${i}" ${use?"checked":""}> 使用する</label><br>
       <select data-i="${i}" class="pname" ${use?"":"disabled"}>${opts}</select><br>
@@ -241,7 +252,7 @@ document.getElementById("btn-detect").onclick = async () => {
   msg.className = "msg"; msg.textContent = "検出実行中..."; out.innerHTML = "";
   startProgress();
   try {
-    const res = await post("/api/detect", {targets, type1s, use_cache: document.getElementById("cache1").checked});
+    const res = await post("/api/detect", {targets, type1s, use_cache: document.getElementById("cache1").checked, conf: +document.getElementById("conf").value});
     msg.textContent = "完了";
     res.results.forEach(r => out.appendChild(renderDetectResult(r)));
   } catch(e) { msg.textContent = e.message; msg.className = "msg err"; }
@@ -270,7 +281,7 @@ document.getElementById("btn-classify").onclick = async () => {
   msg.className = "msg"; msg.textContent = "分類実行中..."; out.innerHTML = "";
   startProgress();
   try {
-    const res = await post("/api/classify", {targets, type1s, use_cache: document.getElementById("cache2").checked});
+    const res = await post("/api/classify", {targets, type1s, use_cache: document.getElementById("cache2").checked, conf: +document.getElementById("conf").value});
     msg.textContent = "完了";
     for (const r of res.results) {
       const div = document.createElement("div"); div.className = "panel";
@@ -296,11 +307,38 @@ document.getElementById("btn-load2").onclick = async () => {
     const div = document.createElement("div"); div.className = "panel";
     let html = `<h2>${t.date}_${t.tray}</h2>`;
     if (!r.exists) html += `<div class="msg">分類結果なし</div>`;
+    if (r.exists && r.meals.length) {
+      html += `<div class="row">
+        <label><input type="checkbox" class="sel-all"> 全選択</label>
+        <select class="bulk-meal" style="font-size:12px">${PLATE_NAMES.map(n=>`<option>${n}</option>`).join("")}</select>
+        <button class="act bulk-move" data-key="${t.date}_${t.tray}">選択した食器を移動</button>
+        <span class="msg move-msg"></span>
+      </div>`;
+    }
     for (const m of r.meals) {
       html += `<b>${m.meal}</b><div class="dish-row">` +
-        m.crops.map(c => `<div class="dish"><img class="crop" src="${c.image}"><br><span style="font-size:11px">${c.type1}</span></div>`).join("") + `</div>`;
+        m.crops.map(c => `<div class="dish"><img class="crop" src="${c.image}&_=${Date.now()}"><br>
+          <span style="font-size:11px">${c.type1}</span><br>
+          <label><input type="checkbox" class="cropchk" data-stem="${c.stem}" data-from="${m.meal}"> 選択</label>
+        </div>`).join("") + `</div>`;
     }
-    div.innerHTML = html; out.appendChild(div);
+    div.innerHTML = html;
+    const selAll = div.querySelector(".sel-all");
+    if (selAll) selAll.onchange = () =>
+      div.querySelectorAll(".cropchk").forEach(c => c.checked = selAll.checked);
+    div.querySelectorAll(".bulk-move").forEach(btn => btn.onclick = async () => {
+      const moves = [...div.querySelectorAll(".cropchk:checked")]
+        .map(c => ({from_meal: c.dataset.from, stem: c.dataset.stem}));
+      if (!moves.length) return alert("移動する食器を選択してください");
+      const [date, tray] = btn.dataset.key.split("_");
+      const to = div.querySelector(".bulk-meal").value;
+      try {
+        const res = await post("/api/move_crops", {date, tray, to_meal: to, moves});
+        div.querySelector(".move-msg").textContent = `${res.moved}件移動しました`;
+        document.getElementById("btn-load2").click();
+      } catch(e) { alert(e.message); }
+    });
+    out.appendChild(div);
   }
 };
 
@@ -347,17 +385,19 @@ document.getElementById("btn-eval").onclick = async () => {
   msg.className = "msg"; msg.textContent = "評価中..."; out.innerHTML = "";
   try {
     const keys = targets.map(t=>`${t.date}_${t.tray}`).join(",");
-    const r = await api("/api/results?measured=" + encodeURIComponent(mid) + "&keys=" + encodeURIComponent(keys));
+    const meals = [...document.querySelectorAll(".mealchk:checked")].map(c=>c.value).join(",");
+    const plot = document.getElementById("plot-sel").value;
+    const r = await api("/api/results?measured=" + encodeURIComponent(mid)
+      + "&keys=" + encodeURIComponent(keys)
+      + "&meals=" + encodeURIComponent(meals)
+      + "&plot=" + plot);
     const fname = "measured_results" + (mid ? "_" + mid : "") + ".json";
     msg.textContent = (r.has_measured ? fname + " を参照" : fname + " なし（推定値のみ表示）");
     const rows = r.rows;
     let html = "";
-    const CM_LABEL = {all:"全体", nansai:"軟菜食", solid:"固形食"};
-    for (const label of ["all","nansai","solid"]) {
-      const cm = r.cm[label];
-      if (!cm) continue;
-      html += `<div class="panel"><h2>${CM_LABEL[label]}: R²=${cm.r2.toFixed(3)}, MAE=${cm.mae.toFixed(3)}, N=${cm.n}</h2><img class="cm" src="${cm.url}"></div>`;
-    }
+    const cm = r.cm["result"];
+    if (cm)
+      html += `<div class="panel"><h2>R²=${cm.r2.toFixed(3)}, MAE=${cm.mae.toFixed(3)}, N=${cm.n}</h2><img class="cm" src="${cm.url}&_=${Date.now()}"></div>`;
     html += `<div class="panel"><table><tr><th>対象</th><th>食種</th><th>タイプ</th><th>target_file</th><th>軟菜</th><th>推定値(中央値)</th><th>試行数</th><th>正解値</th><th>誤差</th></tr>`;
     for (const x of rows) {
       const pred = x.y_pred.length ? x.y_pred[0].toFixed(3) : "-";
@@ -377,6 +417,8 @@ document.getElementById("btn-eval").onclick = async () => {
   PLATE_NAMES = cfg.plate_names;
   renderSelector();
   reloadMeasured();
+  document.getElementById("meal-filter").innerHTML = PLATE_NAMES.map(n =>
+    `<label><input type="checkbox" class="mealchk" value="${n}" checked> ${n}</label>`).join("");
 })();
 </script>
 </body>
