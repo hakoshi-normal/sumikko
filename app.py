@@ -51,6 +51,9 @@ MEASURED_RESULTS = os.path.join(BASE_DIR, "measured_results.json")
 
 MEAN_DEPTH_DIR = os.path.join(WORK_DIR, "mean_depth")
 
+# 深度の有効範囲（calc_amount とカラーマップ表示で共通）
+DEPTH_MIN, DEPTH_MAX = 2000.0, 3500.0
+
 for d in [DATA_DIR, WORK_DIR, TEST_DATA_DIR, PLATE_IMG_DIR, CACHE_DIR, RESULT_DIR, MEAN_DEPTH_DIR]:
     os.makedirs(d, exist_ok=True)
 
@@ -373,15 +376,20 @@ def detect_reference(date, tray, use_cache=True, conf=0.25):
     with open(os.path.join(outdir, "detect_meta.json"), "w", encoding="utf-8") as f:
         json.dump({"source": img_path, "crops": crops}, f, indent=4)
 
-    # ボックス描画プレビュー
+    # ボックス描画プレビュー (data/と同構造: work/detect_preview/{date}/{type1}/)
+    prev_dir = os.path.join(WORK_DIR, "detect_preview", date, "10")
+    os.makedirs(prev_dir, exist_ok=True)
     prev = img.copy()
     for i, box in enumerate(boxes):
         x1, y1, x2, y2 = map(int, box)
         cv2.rectangle(prev, (x1, y1), (x2, y2), (0, 0, 255), 2)
         cv2.putText(prev, str(i), (x1, max(y1 - 5, 15)),
                     cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2)
-    cv2.imwrite(os.path.join(outdir, "tray_boxes.png"), prev)
-    return {"n_dishes": n, "depth_var": depth_var_list, "setting": setting}
+    prev_path = os.path.join(prev_dir, f"{prefix}_boxes.png")
+    cv2.imwrite(prev_path, prev)
+    log(f"{date}_{tray}: 検出プレビュー保存 {os.path.relpath(prev_path, BASE_DIR)}")
+    return {"n_dishes": n, "depth_var": depth_var_list, "setting": setting,
+            "preview": f"/api/file?path=work/detect_preview/{date}/10/{prefix}_boxes.png"}
 
 
 # ---------------------------------------------------------------------------
@@ -464,6 +472,17 @@ def classify_tray(date, tray, type1s=None, use_cache=True, conf=0.25):
                 status = f"warn:検出数{len(boxes)}≠基準{gt_count}"
             n = min(len(boxes), gt_count)
 
+            # バウンディングボックス付きトレー画像を保存 (data/と同構造)
+            prev_dir = os.path.join(WORK_DIR, "detect_preview", date, type1)
+            os.makedirs(prev_dir, exist_ok=True)
+            prev = img.copy()
+            for i, box in enumerate(boxes):
+                x1, y1, x2, y2 = map(int, box)
+                cv2.rectangle(prev, (x1, y1), (x2, y2), (0, 0, 255), 2)
+                cv2.putText(prev, str(i), (x1, max(y1 - 5, 15)),
+                            cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2)
+            cv2.imwrite(os.path.join(prev_dir, f"{prefix}_boxes.png"), prev)
+
             features, crops = [], []
             for i in range(n):
                 x1, y1, x2, y2 = map(int, boxes[i])
@@ -498,7 +517,9 @@ def classify_tray(date, tray, type1s=None, use_cache=True, conf=0.25):
                 with open(os.path.join(odir, f"{stem}.json"), "w", encoding="utf-8") as f:
                     json.dump(meta, f, indent=4, ensure_ascii=False)
                 mapping.append({"crop": i, "meal": meal})
-            summary.append({"type1": type1, "prefix": prefix, "status": status, "mapping": mapping})
+            summary.append({"type1": type1, "prefix": prefix, "status": status,
+                            "mapping": mapping,
+                            "preview": f"/api/file?path=work/detect_preview/{date}/{type1}/{prefix}_boxes.png"})
     return summary
 
 
@@ -552,7 +573,9 @@ def get_tablewaremask(images, unet_flg=False, cache_keys=None, use_cache=True):
 
 
 def calc_amount(depth_empty, depth_full, depth_after, meal_mask,
-                depth_min=2000, depth_max=3500, inpaint_radius=3):
+                depth_min=DEPTH_MIN, depth_max=DEPTH_MAX, inpaint_radius=3,
+                agg="mean"):
+    """残量割合を推定。agg="mean"=領域内平均, "sum"=疑似体積(合計)。"""
     h, w = depth_empty.shape
     depth_full = cv2.resize(depth_full, (w, h), interpolation=cv2.INTER_NEAREST)
     depth_after = cv2.resize(depth_after, (w, h), interpolation=cv2.INTER_NEAREST)
@@ -579,8 +602,9 @@ def calc_amount(depth_empty, depth_full, depth_after, meal_mask,
     valid = meal_mask > 0
     if np.sum(valid) == 0:
         return None
-    V_full = np.nanmean(h_full[valid])
-    V_after = np.nanmean(h_after[valid])
+    agg_fn = np.nansum if agg == "sum" else np.nanmean
+    V_full = agg_fn(h_full[valid])
+    V_after = agg_fn(h_after[valid])
     if V_full < 1e-6:
         return 0.0
     ratio = float(np.clip(V_after / V_full, 0, 1))
@@ -624,7 +648,7 @@ def depth_for_meta(meta, seq=None):
 
 
 def estimate_tray(date, tray, use_unet=True, use_cache=True,
-                  n_trials=1, type1s=None):
+                  n_trials=1, type1s=None, amount_agg="mean"):
     """1トレー分の推定。レコードのリストを返す。
     基準深度は試行ごとに0割/10割の撮影セット・連番をランダム選択。
     type1s: 推定対象の任意名タイプ1のリスト (None=全て)。"""
@@ -643,7 +667,8 @@ def estimate_tray(date, tray, use_unet=True, use_cache=True,
         raise HTTPException(404, f"{key}: 分類済み食器がありません。先に分類を実行してください。")
 
     meals = [m for m in sorted(os.listdir(meals_dir))
-             if os.path.isdir(os.path.join(meals_dir, m)) and m in used_meals]
+             if os.path.isdir(os.path.join(meals_dir, m))
+             and m in used_meals and not m.startswith("_")]
     # 進捗用に対象数を事前計算
     total = 0
     for meal in meals:
@@ -691,8 +716,9 @@ def estimate_tray(date, tray, use_unet=True, use_cache=True,
                 f_img, f_meta = get_crop(f_stem)
                 seqs_e = seqs_of(os.path.join(DATA_DIR, date, e_meta["type1"]), e_meta["prefix"])
                 seqs_f = seqs_of(os.path.join(DATA_DIR, date, f_meta["type1"]), f_meta["prefix"])
-                d_e = depth_for_meta(e_meta, seq=random.choice(seqs_e))
-                d_f = depth_for_meta(f_meta, seq=random.choice(seqs_f))
+                se, sf = random.choice(seqs_e), random.choice(seqs_f)
+                d_e = depth_for_meta(e_meta, seq=se)
+                d_f = depth_for_meta(f_meta, seq=sf)
                 # 食後側は連番平均深度を使用
                 d_a = depth_for_meta(t_meta)
                 if d_e is None or d_f is None or d_a is None:
@@ -704,10 +730,11 @@ def estimate_tray(date, tray, use_unet=True, use_cache=True,
                     cache_keys=[hashlib.md5((key + meal + s).encode()).hexdigest()
                                 for s in (e_stem, f_stem, tgt)],
                     use_cache=use_cache)
-                r = calc_amount(d_e, d_f, d_a, mask)
+                r = calc_amount(d_e, d_f, d_a, mask, agg=amount_agg)
                 if r is not None:
                     preds.append(r)
-                    used_refs.append({"empty": e_stem, "full": f_stem})
+                    used_refs.append({"empty": e_stem, "full": f_stem,
+                                      "empty_seq": se, "full_seq": sf})
             if not preds:
                 continue
             records.append({
@@ -720,6 +747,7 @@ def estimate_tray(date, tray, use_unet=True, use_cache=True,
                 "y_true": None,
                 "y_pred": preds,              # 全試行の推定値
                 "y_pred_median": float(np.median(preds)),  # 採用値(中央値)
+                "amount_agg": amount_agg,
                 "r2": None,
                 "mae": None,
             })
@@ -854,6 +882,44 @@ def evaluate_results(selected_keys=None, measured_id=None,
                       if rec.get("y_pred_median") is not None
                       else np.median(y_pred_all)) if y_pred_all else None
         y_pred = [1 - y_med] if y_med is not None else []
+
+        # 採用値(中央値に最も近い試行)で使用した基準セットの食器画像
+        ref_imgs = None
+        ref_sets = rec.get("ref_sets") or []
+        if ref_sets and y_pred_all:
+            ti = int(np.argmin(np.abs(np.array(y_pred_all) - y_med)))
+            ti = min(ti, len(ref_sets) - 1)
+            rs = ref_sets[ti]
+            base = f"work/plate_images/{pid}/{pname}"
+            dq = lambda stem, seq: (f"/api/depth_png?key={pid}&meal={pname}&stem={stem}"
+                                    + (f"&seq={seq}" if seq else ""))
+            ref_imgs = {
+                "empty": f"/api/file?path={base}/{rs['empty']}.png",
+                "full": f"/api/file?path={base}/{rs['full']}.png",
+                "target": f"/api/file?path={base}/{rec.get('target_file')}.png",
+                "empty_depth": dq(rs["empty"], rs.get("empty_seq")),
+                "full_depth": dq(rs["full"], rs.get("full_seq")),
+                "target_depth": dq(rec.get("target_file"), None),
+                "empty_stem": rs["empty"], "full_stem": rs["full"],
+            }
+        elif y_pred_all:
+            # 旧レコード: ref_setsなし -> 各ディレクトリの先頭を使用
+            mdir = os.path.join(PLATE_IMG_DIR, pid, pname)
+            stems = [os.path.basename(p)[:-5]
+                     for p in glob.glob(os.path.join(mdir, "*.json"))]
+            es = sorted(s for s in stems if s.startswith("0_"))
+            fs = sorted(s for s in stems if s.startswith("10_"))
+            base = f"work/plate_images/{pid}/{pname}"
+            dq0 = lambda stem: f"/api/depth_png?key={pid}&meal={pname}&stem={stem}"
+            ref_imgs = {
+                "empty": f"/api/file?path={base}/{es[0]}.png" if es else None,
+                "full": f"/api/file?path={base}/{fs[0]}.png" if fs else None,
+                "target": f"/api/file?path={base}/{rec.get('target_file')}.png",
+                "empty_depth": dq0(es[0]) if es else None,
+                "full_depth": dq0(fs[0]) if fs else None,
+                "target_depth": dq0(rec.get("target_file")),
+                "empty_stem": es[0] if es else "", "full_stem": fs[0] if fs else "",
+            }
         y_true = None
         fk = (rec.get("target_file"), pname)
         if fk in m_file:
@@ -869,6 +935,7 @@ def evaluate_results(selected_keys=None, measured_id=None,
             "n_trials": rec.get("n_trials", len(y_pred_all)),
             "y_pred": y_pred,
             "y_pred_all": [1 - p for p in y_pred_all],
+            "ref_imgs": ref_imgs,
             "y_true": y_true,
             "nansai": bool(nansai_map.get(pid, {}).get(pname, False)),
             "n": len(y_pred),
@@ -931,6 +998,7 @@ class EstimateReq(BaseModel):
     use_unet: bool = True
     use_cache: bool = True
     n_trials: int = 1
+    amount_agg: str = "mean"
 
 
 @app.get("/api/scan")
@@ -972,7 +1040,7 @@ def api_detect(req: DetectReq):
             res["n_mean_depth"] = n_mean
             out.append({
                 "key": key, "ok": True, **res,
-                "tray_image": f"/api/file?path=work/test_data/{key}/tray_boxes.png",
+                "tray_image": res.get("preview"),
                 "crops": [f"/api/file?path=work/test_data/{key}/plate_{i}.png"
                           for i in range(res["n_dishes"])],
             })
@@ -991,9 +1059,13 @@ def api_detect_result(date: str, tray: str):
     if not os.path.exists(sp):
         return {"exists": False}
     setting = json.load(open(sp, encoding="utf-8"))
+    prevs = sorted(glob.glob(
+        os.path.join(WORK_DIR, "detect_preview", date, "10", f"{tray}_10_*_boxes.png")))
+    tray_img = (f"/api/file?path=work/detect_preview/{date}/10/{os.path.basename(prevs[-1])}"
+                if prevs else None)
     return {
         "exists": True, "key": key, "setting": setting,
-        "tray_image": f"/api/file?path=work/test_data/{key}/tray_boxes.png",
+        "tray_image": tray_img,
         "crops": [f"/api/file?path=work/test_data/{key}/plate_{i}.png" for i in range(len(setting))],
     }
 
@@ -1036,7 +1108,7 @@ def api_classify_result(date: str, tray: str):
     meals = []
     for meal in sorted(os.listdir(base)):
         mdir = os.path.join(base, meal)
-        if not os.path.isdir(mdir):
+        if not os.path.isdir(mdir) or meal.startswith("_"):
             continue
         crops = []
         for p in sorted(glob.glob(os.path.join(mdir, "*.json"))):
@@ -1145,7 +1217,8 @@ def api_estimate(req: EstimateReq):
         try:
             with _lock:
                 recs = estimate_tray(date, tray, req.use_unet, req.use_cache,
-                                     req.n_trials, type1s=req.type1s or None)
+                                     req.n_trials, type1s=req.type1s or None,
+                                     amount_agg=req.amount_agg)
             key = tray_key(date, tray)
             # 同一キーの旧レコードを置き換え
             all_records = [r for r in all_records if r.get("plate_id") != key]
@@ -1183,6 +1256,40 @@ def api_results(measured: Optional[str] = None, keys: Optional[str] = None,
     res["has_final"] = os.path.exists(FINAL_RESULTS)
     res["measured"] = measured or ""
     return res
+
+
+@app.get("/api/depth_png")
+def api_depth_png(key: str, meal: str, stem: str, seq: Optional[int] = None):
+    """分類済み食器の深度をカラーマップPNGで返す。seq指定時はその連番のみ。
+    正規化範囲は calc_amount と同じ depth_min〜depth_max で固定。
+    範囲外・欠損値は calc_amount と同様に inpaint で補完して表示。"""
+    ckey = hashlib.md5(f"{key}|{meal}|{stem}|{seq}".encode()).hexdigest()
+    cpath = os.path.join(CACHE_DIR, "depth_png", f"{ckey}.png")
+    if not os.path.exists(cpath):
+        meta_p = os.path.join(PLATE_IMG_DIR, key, meal, stem + ".json")
+        if not os.path.exists(meta_p):
+            raise HTTPException(404, "not found")
+        meta = json.load(open(meta_p, encoding="utf-8"))
+        d = depth_for_meta(meta, seq)
+        if d is None:
+            raise HTTPException(404, "depth not found")
+        d = d.astype(np.float32)
+        invalid = (d < DEPTH_MIN) | (d > DEPTH_MAX) | ~np.isfinite(d)
+        if np.all(invalid):
+            raise HTTPException(404, "no valid depth")
+        # calc_amount と同じロジック: 範囲外を欠損として inpaint で補完
+        d_filled = d.copy()
+        d_filled[invalid] = 0.0
+        if np.any(invalid):
+            d_filled = cv2.inpaint(d_filled, invalid.astype(np.uint8) * 255,
+                                   3, cv2.INPAINT_TELEA)
+        norm = np.clip((d_filled - DEPTH_MIN) / (DEPTH_MAX - DEPTH_MIN) * 255,
+                       0, 255).astype(np.uint8)
+        vis = cv2.applyColorMap(norm, cv2.COLORMAP_TURBO)
+        vis[invalid] = 0
+        os.makedirs(os.path.dirname(cpath), exist_ok=True)
+        cv2.imwrite(cpath, vis)
+    return FileResponse(cpath)
 
 
 @app.get("/api/file")

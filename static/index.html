@@ -105,6 +105,10 @@
       <label><input type="checkbox" id="unet" checked> U-Netマスク使用（固形食）</label>
       <label><input type="checkbox" id="cache3" checked> キャッシュ使用</label>
       <label>試行回数: <input type="number" id="ntrials" value="10" min="1" style="width:60px"></label>
+      <label>食品量集計: <select id="amount_agg">
+        <option value="mean">領域内平均</option>
+        <option value="sum">疑似体積（合計）</option>
+      </select></label>
       <span style="font-size:12px;color:#888">（基準の0割/10割は撮影セット・連番をランダム選択し中央値を採用）</span>
       <button class="act" id="btn-estimate">推定実行</button>
     </div>
@@ -208,7 +212,8 @@ function renderDetectResult(r) {
   if (!r.ok) { div.innerHTML = `<h2>${r.key}</h2><div class="msg err">${r.error}</div>`; return div; }
   let html = `<h2>${r.key}</h2>`;
   if (r.n_mean_depth !== undefined) html += `<div class="msg">平均深度を ${r.n_mean_depth} 件事前計算しました</div>`;
-  html += `<img class="tray" src="${r.tray_image}&_=${Date.now()}"><div class="dish-row">`;
+  if (r.tray_image) html += `<img class="tray" src="${r.tray_image}&_=${Date.now()}">`;
+  html += `<div class="dish-row">`;
   r.setting.forEach((s, i) => {
     const opts = PLATE_NAMES.map(n => `<option ${n===s.plate_name?"selected":""}>${n}</option>`).join("");
     const use = s.use !== false;
@@ -287,9 +292,9 @@ document.getElementById("btn-classify").onclick = async () => {
       const div = document.createElement("div"); div.className = "panel";
       if (!r.ok) { div.innerHTML = `<h2>${r.key}</h2><div class="msg err">${r.error}</div>`; }
       else {
-        let html = `<h2>${r.key}</h2><table><tr><th>タイプ1</th><th>撮影</th><th>状態</th><th>分類結果</th></tr>`;
+        let html = `<h2>${r.key}</h2><table><tr><th>タイプ1</th><th>撮影</th><th>状態</th><th>分類結果</th><th>検出プレビュー</th></tr>`;
         for (const s of r.summary)
-          html += `<tr><td>${s.type1}</td><td>${s.prefix}</td><td>${s.status}</td><td>${s.mapping.map(m=>`#${m.crop}→${m.meal}`).join(", ")}</td></tr>`;
+          html += `<tr><td>${s.type1}</td><td>${s.prefix}</td><td>${s.status}</td><td>${s.mapping.map(m=>`#${m.crop}→${m.meal}`).join(", ")}</td><td>${s.preview?`<a href="${s.preview}&_=${Date.now()}" target="_blank">表示</a>`:"-"}</td></tr>`;
         html += "</table>"; div.innerHTML = html;
       }
       out.appendChild(div);
@@ -356,6 +361,7 @@ document.getElementById("btn-estimate").onclick = async () => {
       use_unet: document.getElementById("unet").checked,
       use_cache: document.getElementById("cache3").checked,
       n_trials: +document.getElementById("ntrials").value,
+      amount_agg: document.getElementById("amount_agg").value,
     });
     msg.textContent = "完了（" + res.saved + " に保存）";
     let html = `<div class="panel"><table><tr><th>対象</th><th>結果</th></tr>`;
@@ -398,15 +404,65 @@ document.getElementById("btn-eval").onclick = async () => {
     const cm = r.cm["result"];
     if (cm)
       html += `<div class="panel"><h2>R²=${cm.r2.toFixed(3)}, MAE=${cm.mae.toFixed(3)}, N=${cm.n}</h2><img class="cm" src="${cm.url}&_=${Date.now()}"></div>`;
-    html += `<div class="panel"><table><tr><th>対象</th><th>食種</th><th>タイプ</th><th>target_file</th><th>軟菜</th><th>推定値(中央値)</th><th>試行数</th><th>正解値</th><th>誤差</th></tr>`;
-    for (const x of rows) {
-      const pred = x.y_pred.length ? x.y_pred[0].toFixed(3) : "-";
-      const all = (x.y_pred_all||[]).map(v=>v.toFixed(3)).join(", ");
-      const err = (x.mae !== null && x.mae !== undefined) ? x.mae.toFixed(3) : "-";
-      html += `<tr><td>${x.plate_id}</td><td>${x.plate_name}</td><td>${x.target||""}</td><td>${x.target_file||""}</td><td>${x.nansai?"○":""}</td><td title="${all}">${pred}</td><td>${x.n_trials||1}</td><td>${x.y_true??"-"}</td><td>${err}</td></tr>`;
-    }
-    html += "</table></div>";
-    out.innerHTML = html;
+    // ---- ソート付きテーブル ----
+    const SORT_KEYS = {
+      "対象": x=>x.plate_id, "食種": x=>x.plate_name, "タイプ": x=>x.target||"",
+      "target_file": x=>x.target_file||"", "軟菜": x=>x.nansai?1:0,
+      "推定値(中央値)": x=>x.y_pred.length?x.y_pred[0]:null,
+      "試行数": x=>x.n_trials||1,
+      "正解値": x=>x.y_true?x.y_true[0]:null,
+      "誤差": x=>x.mae,
+    };
+    let sortKey = null, sortAsc = true;
+    const renderTable = () => {
+      const sorted = [...rows];
+      if (sortKey) {
+        const f = SORT_KEYS[sortKey];
+        sorted.sort((a,b) => {
+          const va=f(a), vb=f(b);
+          if (va==null) return 1; if (vb==null) return -1;
+          return (va<vb?-1:va>vb?1:0) * (sortAsc?1:-1);
+        });
+      }
+      const th = k => `<th class="sortable" data-k="${k}" style="cursor:pointer">${k}${sortKey===k?(sortAsc?"▲":"▼"):""}</th>`;
+      let t = `<div class="panel"><table><tr>` +
+        ["対象","食種","タイプ","target_file","軟菜"].map(th).join("") +
+        `<th>食器画像(0割/10割/食後)</th>` +
+        ["推定値(中央値)","試行数","正解値","誤差"].map(th).join("") + `</tr>`;
+      for (const x of sorted) {
+        const pred = x.y_pred.length ? x.y_pred[0].toFixed(3) : "-";
+        const all = (x.y_pred_all||[]).map(v=>v.toFixed(3)).join(", ");
+        const err = (x.mae !== null && x.mae !== undefined) ? x.mae.toFixed(3) : "-";
+        let imgs = "-";
+        if (x.ref_imgs) {
+          const ri = x.ref_imgs;
+          const ts = Date.now();
+          const LABELS = {empty:"0割", full:"10割", target:"食後"};
+          imgs = ["empty","full","target"].map(k => {
+            if (!ri[k]) return "";
+            const ttl = k==="empty"?ri.empty_stem:k==="full"?ri.full_stem:x.target_file;
+            let cell = `<div style="display:inline-block;text-align:center;margin:1px">
+              <div style="font-size:10px;color:#666">${LABELS[k]}</div>
+              <img class="crop" style="max-width:72px;display:block" src="${ri[k]}&_=${ts}" title="${ttl}">`;
+            if (ri[k+"_depth"]) cell += `<img class="crop" style="max-width:72px;display:block" src="${ri[k+"_depth"]}&_=${ts}" title="depth: ${ttl}">`;
+            return cell + "</div>";
+          }).join("");
+        }
+        t += `<tr><td>${x.plate_id}</td><td>${x.plate_name}</td><td>${x.target||""}</td><td>${x.target_file||""}</td><td>${x.nansai?"○":""}</td><td>${imgs}</td><td title="${all}">${pred}</td><td>${x.n_trials||1}</td><td>${x.y_true??"-"}</td><td>${err}</td></tr>`;
+      }
+      t += "</table></div>";
+      return t;
+    };
+    out.innerHTML = html + `<div id="tbl-wrap">${renderTable()}</div>`;
+    const bindSort = () => {
+      document.querySelectorAll("#tbl-wrap th.sortable").forEach(th => th.onclick = () => {
+        const k = th.dataset.k;
+        if (sortKey === k) sortAsc = !sortAsc; else { sortKey = k; sortAsc = true; }
+        document.getElementById("tbl-wrap").innerHTML = renderTable();
+        bindSort();
+      });
+    };
+    bindSort();
   } catch(e) { msg.textContent = e.message; msg.className = "msg err"; }
 };
 
