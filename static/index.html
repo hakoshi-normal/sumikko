@@ -192,7 +192,8 @@ function renderSelector() {
     : '<span style="font-size:12px;color:#999">なし</span>';
 }
 
-// 選択を {targets:[{date,tray}], type1s:[...]} に展開（存在する組合せのみ）
+// 選択を {targets:[{date,tray,type1}], type1s:[...]} に展開（存在する組合せのみ）
+// 日付×トレー×食後撮影データの組合せを完全に別データとして扱う
 function getSelection() {
   const dates = new Set([...document.querySelectorAll(".datechk:checked")].map(c=>c.value));
   const trays = new Set([...document.querySelectorAll(".traychk:checked")].map(c=>c.value));
@@ -201,8 +202,16 @@ function getSelection() {
   for (const d of SCAN.dates)
     if (dates.has(d.date))
       for (const t of d.trays)
-        if (trays.has(t.tray)) targets.push({date:d.date, tray:t.tray});
+        if (trays.has(t.tray))
+          for (const n of type1s)
+            if (t.type1s.includes(n)) targets.push({date:d.date, tray:t.tray, type1:n});
   return {targets, type1s};
+}
+
+// "0825_hospital_A" -> {date, type1, tray} (type1は_を含んでもよい)
+function parseKey(k) {
+  const i = k.indexOf("_"), j = k.lastIndexOf("_");
+  return {date: k.slice(0, i), type1: k.slice(i + 1, j), tray: k.slice(j + 1)};
 }
 
 // ---- ページ1: 検出 ----
@@ -235,7 +244,7 @@ function renderDetectResult(r) {
     div.querySelector(`.nansai[data-i="${i}"]`).disabled = !chk.checked;
   });
   div.querySelector(".save-setting").onclick = async () => {
-    const [date, tray] = r.key.split("_");
+    const {date, type1, tray} = parseKey(r.key);
     const setting = [...div.querySelectorAll(".pname")].map(sel => ({
       plate_number: +sel.dataset.i,
       plate_name: sel.value,
@@ -243,7 +252,7 @@ function renderDetectResult(r) {
       use: div.querySelector(`.use[data-i="${sel.dataset.i}"]`).checked,
     }));
     try {
-      await post("/api/plate_setting", {date, tray, setting});
+      await post("/api/plate_setting", {date, tray, type1, setting});
       div.querySelector(".msg").textContent = "保存しました";
     } catch(e) { div.querySelector(".msg").textContent = e.message; }
   };
@@ -252,7 +261,7 @@ function renderDetectResult(r) {
 
 document.getElementById("btn-detect").onclick = async () => {
   const {targets, type1s} = getSelection();
-  if (!targets.length) return alert("日付とトレーIDを選択してください");
+  if (!targets.length) return alert("日付・トレーID・食後撮影データを選択してください");
   const msg = document.getElementById("msg1"), out = document.getElementById("detect-results");
   msg.className = "msg"; msg.textContent = "検出実行中..."; out.innerHTML = "";
   startProgress();
@@ -269,9 +278,9 @@ document.getElementById("btn-load1").onclick = async () => {
   const out = document.getElementById("detect-results");
   out.innerHTML = "";
   for (const t of targets) {
-    const r = await api(`/api/detect_result?date=${t.date}&tray=${t.tray}`);
+    const r = await api(`/api/detect_result?date=${t.date}&tray=${t.tray}&type1=${encodeURIComponent(t.type1)}`);
     if (r.exists) {
-      r.ok = true; r.key = `${t.date}_${t.tray}`; r.n_dishes = r.setting.length;
+      r.ok = true; r.key = `${t.date}_${t.type1}_${t.tray}`; r.n_dishes = r.setting.length;
       r.depth_var = r.setting.map(()=>0);
       out.appendChild(renderDetectResult(r));
     }
@@ -281,7 +290,7 @@ document.getElementById("btn-load1").onclick = async () => {
 // ---- ページ2: 分類 ----
 document.getElementById("btn-classify").onclick = async () => {
   const {targets, type1s} = getSelection();
-  if (!targets.length) return alert("日付とトレーIDを選択してください");
+  if (!targets.length) return alert("日付・トレーID・食後撮影データを選択してください");
   const msg = document.getElementById("msg2"), out = document.getElementById("classify-results");
   msg.className = "msg"; msg.textContent = "分類実行中..."; out.innerHTML = "";
   startProgress();
@@ -308,15 +317,16 @@ document.getElementById("btn-load2").onclick = async () => {
   const out = document.getElementById("classify-results");
   out.innerHTML = "";
   for (const t of targets) {
-    const r = await api(`/api/classify_result?date=${t.date}&tray=${t.tray}`);
+    const r = await api(`/api/classify_result?date=${t.date}&tray=${t.tray}&type1=${encodeURIComponent(t.type1)}`);
     const div = document.createElement("div"); div.className = "panel";
-    let html = `<h2>${t.date}_${t.tray}</h2>`;
+    const ckey = `${t.date}_${t.type1}_${t.tray}`;
+    let html = `<h2>${ckey}</h2>`;
     if (!r.exists) html += `<div class="msg">分類結果なし</div>`;
     if (r.exists && r.meals.length) {
       html += `<div class="row">
         <label><input type="checkbox" class="sel-all"> 全選択</label>
         <select class="bulk-meal" style="font-size:12px">${PLATE_NAMES.map(n=>`<option>${n}</option>`).join("")}</select>
-        <button class="act bulk-move" data-key="${t.date}_${t.tray}">選択した食器を移動</button>
+        <button class="act bulk-move" data-key="${ckey}">選択した食器を移動</button>
         <span class="msg move-msg"></span>
       </div>`;
     }
@@ -335,10 +345,10 @@ document.getElementById("btn-load2").onclick = async () => {
       const moves = [...div.querySelectorAll(".cropchk:checked")]
         .map(c => ({from_meal: c.dataset.from, stem: c.dataset.stem}));
       if (!moves.length) return alert("移動する食器を選択してください");
-      const [date, tray] = btn.dataset.key.split("_");
+      const {date, type1, tray} = parseKey(btn.dataset.key);
       const to = div.querySelector(".bulk-meal").value;
       try {
-        const res = await post("/api/move_crops", {date, tray, to_meal: to, moves});
+        const res = await post("/api/move_crops", {date, tray, type1, to_meal: to, moves});
         div.querySelector(".move-msg").textContent = `${res.moved}件移動しました`;
         document.getElementById("btn-load2").click();
       } catch(e) { alert(e.message); }
@@ -349,15 +359,14 @@ document.getElementById("btn-load2").onclick = async () => {
 
 // ---- ページ3: 推定 ----
 document.getElementById("btn-estimate").onclick = async () => {
-  const {targets, type1s} = getSelection();
-  if (!targets.length) return alert("日付とトレーIDを選択してください");
-  if (!type1s.length) return alert("食後撮影データを選択してください");
+  const {targets} = getSelection();
+  if (!targets.length) return alert("日付・トレーID・食後撮影データを選択してください");
   const msg = document.getElementById("msg3"), out = document.getElementById("estimate-results");
   msg.className = "msg"; msg.textContent = "推定実行中..."; out.innerHTML = "";
   startProgress();
   try {
     const res = await post("/api/estimate", {
-      targets, type1s,
+      targets,
       use_unet: document.getElementById("unet").checked,
       use_cache: document.getElementById("cache3").checked,
       n_trials: +document.getElementById("ntrials").value,
@@ -377,28 +386,31 @@ async function reloadMeasured() {
   const sel = document.getElementById("measured-sel");
   const prev = sel.value;
   const r = await api("/api/measured_files");
-  sel.innerHTML = r.files.length
-    ? r.files.map(f => `<option value="${f}">measured_results${f ? "_" + f : ""}.json</option>`).join("")
-    : '<option value="">（なし）</option>';
+  sel.innerHTML = '<option value="auto">自動（タイプ1ごとの measured_results_*.json を併用）</option>'
+    + r.files.map(f => `<option value="${f}">measured_results${f ? "_" + f : ""}.json</option>`).join("");
   if (r.files.includes(prev)) sel.value = prev;
 }
 document.getElementById("btn-reload-measured").onclick = reloadMeasured;
 
 document.getElementById("btn-eval").onclick = async () => {
-  const {targets} = getSelection();
+  const {targets, type1s} = getSelection();
+  if (!type1s.length) return alert("食後撮影データを選択してください");
   const mid = document.getElementById("measured-sel").value;
   const msg = document.getElementById("msg4"), out = document.getElementById("eval-results");
   msg.className = "msg"; msg.textContent = "評価中..."; out.innerHTML = "";
   try {
-    const keys = targets.map(t=>`${t.date}_${t.tray}`).join(",");
+    const keys = targets.map(t=>`${t.date}_${t.type1}_${t.tray}`).join(",");
     const meals = [...document.querySelectorAll(".mealchk:checked")].map(c=>c.value).join(",");
     const plot = document.getElementById("plot-sel").value;
     const r = await api("/api/results?measured=" + encodeURIComponent(mid)
       + "&keys=" + encodeURIComponent(keys)
       + "&meals=" + encodeURIComponent(meals)
+      + "&type1s=" + encodeURIComponent(type1s.join(","))
       + "&plot=" + plot);
-    const fname = "measured_results" + (mid ? "_" + mid : "") + ".json";
-    msg.textContent = (r.has_measured ? fname + " を参照" : fname + " なし（推定値のみ表示）");
+    const fname = mid === "auto"
+      ? "タイプ1ごとの実測ファイル（自動併用）"
+      : "measured_results" + (mid ? "_" + mid : "") + ".json";
+    msg.textContent = (r.has_measured ? fname + " を参照" : "実測データなし（推定値のみ表示）");
     const rows = r.rows;
     let html = "";
     const cm = r.cm["result"];

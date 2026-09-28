@@ -9,8 +9,8 @@
       - 連番  : 1-5 (深度は平均、画像は連番最大のものを使用)
 
 出力構造:
-    work/test_data/{MMDD}_{トレーID}/            基準食器画像 + plate_setting.json
-    work/plate_images/{MMDD}_{トレーID}/{食種}/  分類済み食器画像 + メタ情報 + 平均深度
+    work/test_data/{MMDD}_{タイプ1}_{トレーID}/            基準食器画像 + plate_setting.json
+    work/plate_images/{MMDD}_{タイプ1}_{トレーID}/{食種}/  分類済み食器画像 + メタ情報 + 平均深度
     work/cache/                                  YOLO/マスクのキャッシュ
     work/result_analyze/                         混同行列画像
     final_results.json                           推定結果
@@ -112,8 +112,16 @@ def get_interpreter():
 FNAME_RE = re.compile(r"^([A-Z])_(0|10|P)_(\d+)_(\d+)\.(png|npy)$")
 
 
-def tray_key(date, tray):
-    return f"{date}_{tray}"
+def tray_key(date, tray, type1):
+    """{date}_{type1}_{tray} — 撮影方法(タイプ1)ごとに完全に別データとして扱う"""
+    return f"{date}_{type1}_{tray}"
+
+
+def parse_tray_key(key):
+    """tray_key を (date, type1, tray) に分解。type1は_を含んでもよい"""
+    date, rest = key.split("_", 1)
+    type1, tray = rest.rsplit("_", 1)
+    return date, type1, tray
 
 
 def scan_data():
@@ -187,11 +195,15 @@ def mean_depth(date, type1, stem_prefix):
     return _mean_depth_raw(date, type1, stem_prefix)
 
 
-def precompute_mean_depth(date, tray):
-    """対象トレーの全タイプ1・全撮影の平均深度を事前計算して保存（前処理）"""
+def precompute_mean_depth(date, tray, type1s=None):
+    """対象トレーの全タイプ1・全撮影の平均深度を事前計算して保存（前処理）。
+    type1s: 処理対象の任意名タイプ1のリスト。0/10は常に処理。
+    None=全て、空リスト=任意名を処理しない。"""
     done, total = 0, 0
     targets = []
     for type1 in list_type1_dirs(date):
+        if type1s is not None and type1 not in ("0", "10") and type1 not in type1s:
+            continue
         t2 = type2_of(date, type1, tray)
         if t2 is None:
             continue
@@ -304,13 +316,15 @@ def yolo_boxes(image_path, use_cache=True, conf=0.25):
     return arr
 
 
-def detect_reference(date, tray, use_cache=True, conf=0.25):
-    """10割画像から食器を検出し work/test_data/{date}_{tray}/ に保存"""
+def detect_reference(date, tray, type1, use_cache=True, conf=0.25):
+    """10割画像から食器を検出し work/test_data/{date}_{type1}_{tray}/ に保存。
+    検出画像は共有の10割ディレクトリを使うが、設定はタイプ1ごとに独立。"""
+    key = tray_key(date, tray, type1)
     prefixes = list_captures(date, "10", tray, "10")
     if not prefixes:
         raise HTTPException(404, f"{date}/{tray}: 10割データがありません")
     prefix = prefixes[-1]
-    log(f"{date}_{tray}: 食器検出 ({prefix})")
+    log(f"{key}: 食器検出 ({prefix})")
     img_path = rep_image_path(date, "10", prefix)
     depth = mean_depth(date, "10", prefix)
     if img_path is None or depth is None:
@@ -320,7 +334,7 @@ def detect_reference(date, tray, use_cache=True, conf=0.25):
     img = cv2.imread(img_path)
     H, W = img.shape[:2]
 
-    outdir = os.path.join(TEST_DATA_DIR, tray_key(date, tray))
+    outdir = os.path.join(TEST_DATA_DIR, key)
     os.makedirs(outdir, exist_ok=True)
     # 既存のplate_*.pngを削除
     for p in glob.glob(os.path.join(outdir, "plate_*.png")):
@@ -387,7 +401,7 @@ def detect_reference(date, tray, use_cache=True, conf=0.25):
                     cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2)
     prev_path = os.path.join(prev_dir, f"{prefix}_boxes.png")
     cv2.imwrite(prev_path, prev)
-    log(f"{date}_{tray}: 検出プレビュー保存 {os.path.relpath(prev_path, BASE_DIR)}")
+    log(f"{key}: 検出プレビュー保存 {os.path.relpath(prev_path, BASE_DIR)}")
     return {"n_dishes": n, "depth_var": depth_var_list, "setting": setting,
             "preview": f"/api/file?path=work/detect_preview/{date}/10/{prefix}_boxes.png"}
 
@@ -420,10 +434,10 @@ def get_matched_index(features1, features2):
     return col_ind.tolist()
 
 
-def classify_tray(date, tray, type1s=None, use_cache=True, conf=0.25):
-    """対象トレーの食器を分類し plate_images/ に保存。
-    type1s: 任意名タイプ1のリスト (None=全て)。0/10は常に対象。"""
-    key = tray_key(date, tray)
+def classify_tray(date, tray, type1, use_cache=True, conf=0.25):
+    """対象トレーの食器を分類し plate_images/{key}/ に保存。
+    対象は基準0割/10割 + 指定タイプ1の食後データのみ。"""
+    key = tray_key(date, tray, type1)
     ref_dir = os.path.join(TEST_DATA_DIR, key)
     setting_path = os.path.join(ref_dir, "plate_setting.json")
     if not os.path.exists(setting_path):
@@ -447,7 +461,7 @@ def classify_tray(date, tray, type1s=None, use_cache=True, conf=0.25):
         shutil.rmtree(out_base)
 
     dirs = [t1 for t1 in list_type1_dirs(date)
-            if t1 in ("0", "10") or type1s is None or t1 in type1s]
+            if t1 in ("0", "10") or t1 == type1]
     total = sum(len(list_captures(date, t1, tray, type2_of(date, t1, tray) or ""))
                 for t1 in dirs)
     done = 0
@@ -615,8 +629,8 @@ def calc_amount(depth_empty, depth_full, depth_after, meal_mask,
     return ratio
 
 
-def load_crop(date, tray, meal, stem):
-    p = os.path.join(PLATE_IMG_DIR, tray_key(date, tray), meal, stem)
+def load_crop(key, meal, stem):
+    p = os.path.join(PLATE_IMG_DIR, key, meal, stem)
     img = cv2.imread(p + ".png")
     meta = json.load(open(p + ".json", encoding="utf-8"))
     dep = np.load(p + "_mean.npy") if os.path.exists(p + "_mean.npy") else None
@@ -647,12 +661,11 @@ def depth_for_meta(meta, seq=None):
     return np.rot90(d, k=meta["rot_k"])
 
 
-def estimate_tray(date, tray, use_unet=True, use_cache=True,
-                  n_trials=1, type1s=None, amount_agg="mean"):
-    """1トレー分の推定。レコードのリストを返す。
-    基準深度は試行ごとに0割/10割の撮影セット・連番をランダム選択。
-    type1s: 推定対象の任意名タイプ1のリスト (None=全て)。"""
-    key = tray_key(date, tray)
+def estimate_tray(date, tray, type1, use_unet=True, use_cache=True,
+                  n_trials=1, amount_agg="mean"):
+    """{date}_{type1}_{tray} 1組分の推定。レコードのリストを返す。
+    基準深度は試行ごとに0割/10割の撮影セット・連番をランダム選択。"""
+    key = tray_key(date, tray, type1)
     ref_dir = os.path.join(TEST_DATA_DIR, key)
     setting_path = os.path.join(ref_dir, "plate_setting.json")
     if not os.path.exists(setting_path):
@@ -675,8 +688,7 @@ def estimate_tray(date, tray, use_unet=True, use_cache=True,
         for p in glob.glob(os.path.join(meals_dir, meal, "*.json")):
             s = os.path.basename(p)[:-5]
             if not s.startswith("0_") and not s.startswith("10_"):
-                if type1s is None or any(s.startswith(t + "_") for t in type1s):
-                    total += 1
+                total += 1
     done = 0
     set_progress(0, total, f"{key}: 摂取量推定")
 
@@ -685,8 +697,7 @@ def estimate_tray(date, tray, use_unet=True, use_cache=True,
         stems = [os.path.basename(p)[:-5] for p in glob.glob(os.path.join(mdir, "*.json"))]
         empty = sorted(s for s in stems if s.startswith("0_"))
         full = sorted(s for s in stems if s.startswith("10_"))
-        targets = [s for s in stems if not s.startswith("0_") and not s.startswith("10_")
-                   and (type1s is None or any(s.startswith(t + "_") for t in type1s))]
+        targets = [s for s in stems if not s.startswith("0_") and not s.startswith("10_")]
         if not empty or not full:
             continue
         nansai = bool(nansai_map.get(meal, False))
@@ -696,7 +707,7 @@ def estimate_tray(date, tray, use_unet=True, use_cache=True,
         _img_cache, _meta_cache = {}, {}
         def get_crop(stem):
             if stem not in _img_cache:
-                img, _, meta = load_crop(date, tray, meal, stem)
+                img, _, meta = load_crop(key, meal, stem)
                 _img_cache[stem] = img
                 _meta_cache[stem] = meta
             return _img_cache[stem], _meta_cache[stem]
@@ -833,11 +844,19 @@ def measured_path(identifier=None):
 
 
 def evaluate_results(selected_keys=None, measured_id=None,
-                     meals=None, plot="cm"):
+                     meals=None, plot="cm", type1s=None):
     """final_results.json と measured_results*.json を突合し統計値を返す。
-    meals: 集計対象の食種リスト (None=全て)"""
+    meals: 集計対象の食種リスト (None=全て)
+    type1s: 集計対象の食後撮影データ（タイプ1）リスト (None=全て)
+    measured_id="auto" の場合、選択タイプ1ごとの
+    measured_results_{タイプ1}.json を自動で併用する。"""
     preds = load_json_list(FINAL_RESULTS)
-    measured = load_json_list(measured_path(measured_id))
+    if measured_id == "auto":
+        measured = load_json_list(measured_path(None))
+        for t1 in (type1s or []):
+            measured += load_json_list(measured_path(t1))
+    else:
+        measured = load_json_list(measured_path(measured_id))
 
     # measured を索引化
     # y_true は「食事摂取量割合 (0-1)」。スカラー/リスト/{食種:値} を許容。
@@ -871,7 +890,9 @@ def evaluate_results(selected_keys=None, measured_id=None,
             continue
         if meals and pname not in meals:
             continue
-        date, tray = pid.split("_", 1)
+        if type1s is not None and rec.get("target") not in type1s:
+            continue
+        date, type1, tray = parse_tray_key(pid)
         sp = os.path.join(TEST_DATA_DIR, pid, "plate_setting.json")
         if os.path.exists(sp):
             cfg = json.load(open(sp, encoding="utf-8"))
@@ -981,7 +1002,7 @@ async def no_store(request, call_next):
 
 class DetectReq(BaseModel):
     targets: List[dict]  # [{date, tray}]
-    type1s: List[str] = []  # 任意名タイプ1 (空=全て)
+    type1s: List[str] = []  # 任意名タイプ1 (チェックされたものをそのまま渡す)
     use_cache: bool = True
     conf: float = 0.25  # YOLO信頼度しきい値
 
@@ -989,6 +1010,7 @@ class DetectReq(BaseModel):
 class SettingReq(BaseModel):
     date: str
     tray: str
+    type1: str
     setting: List[dict]
 
 
@@ -1029,15 +1051,20 @@ def api_config():
 @app.post("/api/detect")
 def api_detect(req: DetectReq):
     out = []
+    seen_mean = set()
     for t in req.targets:
-        date, tray = t["date"], t["tray"]
+        date, tray, type1 = t["date"], t["tray"], t["type1"]
+        key = tray_key(date, tray, type1)
         try:
             with _lock:
-                res = detect_reference(date, tray, req.use_cache, req.conf)
-                # 前処理: 連番深度の平均を事前計算
-                n_mean = precompute_mean_depth(date, tray)
-            key = tray_key(date, tray)
-            res["n_mean_depth"] = n_mean
+                res = detect_reference(date, tray, type1, req.use_cache, req.conf)
+                # 前処理: 連番深度の平均を事前計算（日付×トレーごとに1回）
+                n_mean = None
+                if (date, tray) not in seen_mean:
+                    seen_mean.add((date, tray))
+                    n_mean = precompute_mean_depth(date, tray, type1s=req.type1s)
+            if n_mean is not None:
+                res["n_mean_depth"] = n_mean
             out.append({
                 "key": key, "ok": True, **res,
                 "tray_image": res.get("preview"),
@@ -1045,15 +1072,15 @@ def api_detect(req: DetectReq):
                           for i in range(res["n_dishes"])],
             })
         except HTTPException as e:
-            out.append({"key": tray_key(date, tray), "ok": False, "error": e.detail})
+            out.append({"key": key, "ok": False, "error": e.detail})
         except Exception as e:
-            out.append({"key": tray_key(date, tray), "ok": False, "error": str(e)})
+            out.append({"key": key, "ok": False, "error": str(e)})
     return {"results": out}
 
 
 @app.get("/api/detect_result")
-def api_detect_result(date: str, tray: str):
-    key = tray_key(date, tray)
+def api_detect_result(date: str, tray: str, type1: str):
+    key = tray_key(date, tray, type1)
     d = os.path.join(TEST_DATA_DIR, key)
     sp = os.path.join(d, "plate_setting.json")
     if not os.path.exists(sp):
@@ -1072,7 +1099,7 @@ def api_detect_result(date: str, tray: str):
 
 @app.post("/api/plate_setting")
 def api_plate_setting(req: SettingReq):
-    key = tray_key(req.date, req.tray)
+    key = tray_key(req.date, req.tray, req.type1)
     d = os.path.join(TEST_DATA_DIR, key)
     os.makedirs(d, exist_ok=True)
     with open(os.path.join(d, "plate_setting.json"), "w", encoding="utf-8") as f:
@@ -1084,24 +1111,24 @@ def api_plate_setting(req: SettingReq):
 def api_classify(req: DetectReq):
     out = []
     for t in req.targets:
-        date, tray = t["date"], t["tray"]
+        date, tray, type1 = t["date"], t["tray"], t["type1"]
+        key = tray_key(date, tray, type1)
         try:
             with _lock:
-                summary = classify_tray(date, tray,
-                                        type1s=req.type1s or None,
+                summary = classify_tray(date, tray, type1,
                                         use_cache=req.use_cache,
                                         conf=req.conf)
-            out.append({"key": tray_key(date, tray), "ok": True, "summary": summary})
+            out.append({"key": key, "ok": True, "summary": summary})
         except HTTPException as e:
-            out.append({"key": tray_key(date, tray), "ok": False, "error": e.detail})
+            out.append({"key": key, "ok": False, "error": e.detail})
         except Exception as e:
-            out.append({"key": tray_key(date, tray), "ok": False, "error": str(e)})
+            out.append({"key": key, "ok": False, "error": str(e)})
     return {"results": out}
 
 
 @app.get("/api/classify_result")
-def api_classify_result(date: str, tray: str):
-    key = tray_key(date, tray)
+def api_classify_result(date: str, tray: str, type1: str):
+    key = tray_key(date, tray, type1)
     base = os.path.join(PLATE_IMG_DIR, key)
     if not os.path.isdir(base):
         return {"exists": False, "meals": []}
@@ -1125,6 +1152,7 @@ def api_classify_result(date: str, tray: str):
 class MoveReq(BaseModel):
     date: str
     tray: str
+    type1: str
     from_meal: str
     to_meal: str
     stem: str
@@ -1133,6 +1161,7 @@ class MoveReq(BaseModel):
 class MoveBulkReq(BaseModel):
     date: str
     tray: str
+    type1: str
     to_meal: str
     moves: List[dict]  # [{from_meal, stem}]
 
@@ -1187,7 +1216,7 @@ def _move_one(key, from_meal, to_meal, stem):
 @app.post("/api/move_crops")
 def api_move_crops(req: MoveBulkReq):
     """複数の分類済み食器を一括で別食種へ移動"""
-    key = tray_key(req.date, req.tray)
+    key = tray_key(req.date, req.tray, req.type1)
     n = 0
     for m in req.moves:
         if m["from_meal"] == req.to_meal:
@@ -1201,7 +1230,7 @@ def api_move_crops(req: MoveBulkReq):
 @app.post("/api/move_crop")
 def api_move_crop(req: MoveReq):
     """分類済み食器を別の食種へ移動（work/plate_images 内のファイルを移動）"""
-    key = tray_key(req.date, req.tray)
+    key = tray_key(req.date, req.tray, req.type1)
     if not _move_one(key, req.from_meal, req.to_meal, req.stem):
         raise HTTPException(404, "対象の食器データがありません")
     log(f"{key}: {req.stem} を {req.from_meal} -> {req.to_meal} に移動")
@@ -1213,21 +1242,20 @@ def api_estimate(req: EstimateReq):
     all_records = load_json_list(FINAL_RESULTS)
     out = []
     for t in req.targets:
-        date, tray = t["date"], t["tray"]
+        date, tray, type1 = t["date"], t["tray"], t["type1"]
+        key = tray_key(date, tray, type1)
         try:
             with _lock:
-                recs = estimate_tray(date, tray, req.use_unet, req.use_cache,
-                                     req.n_trials, type1s=req.type1s or None,
-                                     amount_agg=req.amount_agg)
-            key = tray_key(date, tray)
+                recs = estimate_tray(date, tray, type1, req.use_unet, req.use_cache,
+                                     req.n_trials, amount_agg=req.amount_agg)
             # 同一キーの旧レコードを置き換え
             all_records = [r for r in all_records if r.get("plate_id") != key]
             all_records.extend(recs)
             out.append({"key": key, "ok": True, "n_records": len(recs)})
         except HTTPException as e:
-            out.append({"key": tray_key(date, tray), "ok": False, "error": e.detail})
+            out.append({"key": key, "ok": False, "error": e.detail})
         except Exception as e:
-            out.append({"key": tray_key(date, tray), "ok": False, "error": str(e)})
+            out.append({"key": key, "ok": False, "error": str(e)})
     with open(FINAL_RESULTS, "w", encoding="utf-8") as f:
         json.dump(all_records, f, indent=4, ensure_ascii=False)
     return {"results": out, "saved": "final_results.json"}
@@ -1245,14 +1273,21 @@ def api_measured_files():
 
 @app.get("/api/results")
 def api_results(measured: Optional[str] = None, keys: Optional[str] = None,
-                meals: Optional[str] = None, plot: str = "cm"):
+                meals: Optional[str] = None, plot: str = "cm",
+                type1s: Optional[str] = None):
     sel = set(keys.split(",")) if keys else None
     meal_set = set(meals.split(",")) if meals else None
+    type1_set = set(type1s.split(",")) if type1s else None
     res = evaluate_results(sel, measured_id=measured or None,
-                           meals=meal_set, plot=plot)
+                           meals=meal_set, plot=plot, type1s=type1_set)
     for label, cm in res["cm"].items():
         cm["url"] = "/api/file?path=" + cm["path"].replace("\\", "/")
-    res["has_measured"] = os.path.exists(measured_path(measured or None))
+    if measured == "auto":
+        res["has_measured"] = any(
+            os.path.exists(measured_path(t)) for t in (type1_set or [])) \
+            or os.path.exists(measured_path(None))
+    else:
+        res["has_measured"] = os.path.exists(measured_path(measured or None))
     res["has_final"] = os.path.exists(FINAL_RESULTS)
     res["measured"] = measured or ""
     return res
