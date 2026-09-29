@@ -112,8 +112,13 @@ def get_interpreter():
 FNAME_RE = re.compile(r"^([A-Z])_(0|10|P)_(\d+)_(\d+)\.(png|npy)$")
 
 
+def ref_key(date, tray):
+    """基準設定のキー {date}_{tray} — タイプ1間で共有（同じ物理トレー）"""
+    return f"{date}_{tray}"
+
+
 def tray_key(date, tray, type1):
-    """{date}_{type1}_{tray} — 撮影方法(タイプ1)ごとに完全に別データとして扱う"""
+    """{date}_{type1}_{tray} — 分類・推定結果は撮影方法(タイプ1)ごとに別データ"""
     return f"{date}_{type1}_{tray}"
 
 
@@ -316,14 +321,27 @@ def yolo_boxes(image_path, use_cache=True, conf=0.25):
     return arr
 
 
-def detect_reference(date, tray, type1, use_cache=True, conf=0.25):
-    """10割画像から食器を検出し work/test_data/{date}_{type1}_{tray}/ に保存。
-    検出画像は共有の10割ディレクトリを使うが、設定はタイプ1ごとに独立。"""
-    key = tray_key(date, tray, type1)
+def detect_reference(date, tray, use_cache=True, conf=0.25, shuffle=False):
+    """10割画像から食器を検出し work/test_data/{date}_{tray}/ に保存。
+    基準設定はタイプ1間で共有される（同じ物理トレー）。
+    shuffle=True の場合、前回と異なる撮影セットをランダムに選択。"""
+    key = ref_key(date, tray)
     prefixes = list_captures(date, "10", tray, "10")
     if not prefixes:
         raise HTTPException(404, f"{date}/{tray}: 10割データがありません")
-    prefix = prefixes[-1]
+    if shuffle and len(prefixes) > 1:
+        # 前回使用した撮影セットを除外してランダム選択
+        meta_p = os.path.join(TEST_DATA_DIR, key, "detect_meta.json")
+        prev_prefix = None
+        if os.path.exists(meta_p):
+            try:
+                prev_prefix = json.load(open(meta_p, encoding="utf-8")).get("prefix")
+            except Exception:
+                pass
+        cands = [p for p in prefixes if p != prev_prefix] or prefixes
+        prefix = random.choice(cands)
+    else:
+        prefix = prefixes[-1]
     log(f"{key}: 食器検出 ({prefix})")
     img_path = rep_image_path(date, "10", prefix)
     depth = mean_depth(date, "10", prefix)
@@ -388,7 +406,7 @@ def detect_reference(date, tray, type1, use_cache=True, conf=0.25):
     with open(os.path.join(outdir, "plate_setting.json"), "w", encoding="utf-8") as f:
         json.dump(setting, f, indent=4, ensure_ascii=False)
     with open(os.path.join(outdir, "detect_meta.json"), "w", encoding="utf-8") as f:
-        json.dump({"source": img_path, "crops": crops}, f, indent=4)
+        json.dump({"source": img_path, "prefix": prefix, "crops": crops}, f, indent=4)
 
     # ボックス描画プレビュー (data/と同構造: work/detect_preview/{date}/{type1}/)
     prev_dir = os.path.join(WORK_DIR, "detect_preview", date, "10")
@@ -403,6 +421,7 @@ def detect_reference(date, tray, type1, use_cache=True, conf=0.25):
     cv2.imwrite(prev_path, prev)
     log(f"{key}: 検出プレビュー保存 {os.path.relpath(prev_path, BASE_DIR)}")
     return {"n_dishes": n, "depth_var": depth_var_list, "setting": setting,
+            "prefix": prefix,
             "preview": f"/api/file?path=work/detect_preview/{date}/10/{prefix}_boxes.png"}
 
 
@@ -438,7 +457,8 @@ def classify_tray(date, tray, type1, use_cache=True, conf=0.25):
     """対象トレーの食器を分類し plate_images/{key}/ に保存。
     対象は基準0割/10割 + 指定タイプ1の食後データのみ。"""
     key = tray_key(date, tray, type1)
-    ref_dir = os.path.join(TEST_DATA_DIR, key)
+    # 基準設定はタイプ1間で共有（work/test_data/{date}_{tray}/）
+    ref_dir = os.path.join(TEST_DATA_DIR, ref_key(date, tray))
     setting_path = os.path.join(ref_dir, "plate_setting.json")
     if not os.path.exists(setting_path):
         raise HTTPException(404, f"{key}: 基準データ(plate_setting.json)がありません。先に食器検出を実行してください。")
@@ -666,7 +686,8 @@ def estimate_tray(date, tray, type1, use_unet=True, use_cache=True,
     """{date}_{type1}_{tray} 1組分の推定。レコードのリストを返す。
     基準深度は試行ごとに0割/10割の撮影セット・連番をランダム選択。"""
     key = tray_key(date, tray, type1)
-    ref_dir = os.path.join(TEST_DATA_DIR, key)
+    # 基準設定はタイプ1間で共有（work/test_data/{date}_{tray}/）
+    ref_dir = os.path.join(TEST_DATA_DIR, ref_key(date, tray))
     setting_path = os.path.join(ref_dir, "plate_setting.json")
     if not os.path.exists(setting_path):
         raise HTTPException(404, f"{key}: 基準データがありません")
@@ -893,7 +914,7 @@ def evaluate_results(selected_keys=None, measured_id=None,
         if type1s is not None and rec.get("target") not in type1s:
             continue
         date, type1, tray = parse_tray_key(pid)
-        sp = os.path.join(TEST_DATA_DIR, pid, "plate_setting.json")
+        sp = os.path.join(TEST_DATA_DIR, ref_key(date, tray), "plate_setting.json")
         if os.path.exists(sp):
             cfg = json.load(open(sp, encoding="utf-8"))
             nansai_map[pid] = {d["plate_name"]: d["nansai"] for d in cfg}
@@ -1010,7 +1031,6 @@ class DetectReq(BaseModel):
 class SettingReq(BaseModel):
     date: str
     tray: str
-    type1: str
     setting: List[dict]
 
 
@@ -1051,20 +1071,21 @@ def api_config():
 @app.post("/api/detect")
 def api_detect(req: DetectReq):
     out = []
-    seen_mean = set()
+    seen = set()
     for t in req.targets:
-        date, tray, type1 = t["date"], t["tray"], t["type1"]
-        key = tray_key(date, tray, type1)
+        date, tray = t["date"], t["tray"]
+        # 基準設定は日付×トレー単位で共有（タイプ1の重複組合せは1回のみ）
+        if (date, tray) in seen:
+            continue
+        seen.add((date, tray))
+        key = ref_key(date, tray)
         try:
             with _lock:
-                res = detect_reference(date, tray, type1, req.use_cache, req.conf)
-                # 前処理: 連番深度の平均を事前計算（日付×トレーごとに1回）
-                n_mean = None
-                if (date, tray) not in seen_mean:
-                    seen_mean.add((date, tray))
-                    n_mean = precompute_mean_depth(date, tray, type1s=req.type1s)
-            if n_mean is not None:
-                res["n_mean_depth"] = n_mean
+                res = detect_reference(date, tray, req.use_cache, req.conf,
+                                       shuffle=bool(t.get("shuffle")))
+                # 前処理: 連番深度の平均を事前計算（選択した食後撮影データのみ）
+                n_mean = precompute_mean_depth(date, tray, type1s=req.type1s)
+            res["n_mean_depth"] = n_mean
             out.append({
                 "key": key, "ok": True, **res,
                 "tray_image": res.get("preview"),
@@ -1079,8 +1100,8 @@ def api_detect(req: DetectReq):
 
 
 @app.get("/api/detect_result")
-def api_detect_result(date: str, tray: str, type1: str):
-    key = tray_key(date, tray, type1)
+def api_detect_result(date: str, tray: str):
+    key = ref_key(date, tray)
     d = os.path.join(TEST_DATA_DIR, key)
     sp = os.path.join(d, "plate_setting.json")
     if not os.path.exists(sp):
@@ -1090,8 +1111,15 @@ def api_detect_result(date: str, tray: str, type1: str):
         os.path.join(WORK_DIR, "detect_preview", date, "10", f"{tray}_10_*_boxes.png")))
     tray_img = (f"/api/file?path=work/detect_preview/{date}/10/{os.path.basename(prevs[-1])}"
                 if prevs else None)
+    meta_p = os.path.join(d, "detect_meta.json")
+    prefix = None
+    if os.path.exists(meta_p):
+        try:
+            prefix = json.load(open(meta_p, encoding="utf-8")).get("prefix")
+        except Exception:
+            pass
     return {
-        "exists": True, "key": key, "setting": setting,
+        "exists": True, "key": key, "setting": setting, "prefix": prefix,
         "tray_image": tray_img,
         "crops": [f"/api/file?path=work/test_data/{key}/plate_{i}.png" for i in range(len(setting))],
     }
@@ -1099,7 +1127,7 @@ def api_detect_result(date: str, tray: str, type1: str):
 
 @app.post("/api/plate_setting")
 def api_plate_setting(req: SettingReq):
-    key = tray_key(req.date, req.tray, req.type1)
+    key = ref_key(req.date, req.tray)
     d = os.path.join(TEST_DATA_DIR, key)
     os.makedirs(d, exist_ok=True)
     with open(os.path.join(d, "plate_setting.json"), "w", encoding="utf-8") as f:

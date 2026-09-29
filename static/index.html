@@ -220,6 +220,7 @@ function renderDetectResult(r) {
   div.className = "panel";
   if (!r.ok) { div.innerHTML = `<h2>${r.key}</h2><div class="msg err">${r.error}</div>`; return div; }
   let html = `<h2>${r.key}</h2>`;
+  if (r.prefix) html += `<div class="msg">基準画像: ${r.prefix} <button class="sub reshuffle">トレー画像を変更（ランダム）</button></div>`;
   if (r.n_mean_depth !== undefined) html += `<div class="msg">平均深度を ${r.n_mean_depth} 件事前計算しました</div>`;
   if (r.tray_image) html += `<img class="tray" src="${r.tray_image}&_=${Date.now()}">`;
   html += `<div class="dish-row">`;
@@ -237,6 +238,21 @@ function renderDetectResult(r) {
   });
   html += `</div><div class="row"><button class="act save-setting">設定を保存</button><span class="msg"></span></div>`;
   div.innerHTML = html;
+  // 別の基準画像(10割撮影セット)で再検出
+  const rs = div.querySelector(".reshuffle");
+  if (rs) rs.onclick = async () => {
+    const [date, tray] = r.key.split("_");
+    rs.disabled = true; rs.textContent = "再検出中...";
+    try {
+      const res = await post("/api/detect", {
+        targets: [{date, tray, shuffle: true}],
+        type1s: [],
+        use_cache: document.getElementById("cache1").checked,
+        conf: +document.getElementById("conf").value,
+      });
+      div.replaceWith(renderDetectResult(res.results[0]));
+    } catch(e) { alert(e.message); rs.disabled = false; rs.textContent = "別の基準画像で再検出（ランダム）"; }
+  };
   // 「使用する」チェックで選択肢を有効/無効化
   div.querySelectorAll(".use").forEach(chk => chk.onchange = () => {
     const i = chk.dataset.i;
@@ -244,7 +260,7 @@ function renderDetectResult(r) {
     div.querySelector(`.nansai[data-i="${i}"]`).disabled = !chk.checked;
   });
   div.querySelector(".save-setting").onclick = async () => {
-    const {date, type1, tray} = parseKey(r.key);
+    const [date, tray] = r.key.split("_");  // 基準設定は {date}_{tray} 単位で共有
     const setting = [...div.querySelectorAll(".pname")].map(sel => ({
       plate_number: +sel.dataset.i,
       plate_name: sel.value,
@@ -252,7 +268,7 @@ function renderDetectResult(r) {
       use: div.querySelector(`.use[data-i="${sel.dataset.i}"]`).checked,
     }));
     try {
-      await post("/api/plate_setting", {date, tray, type1, setting});
+      await post("/api/plate_setting", {date, tray, setting});
       div.querySelector(".msg").textContent = "保存しました";
     } catch(e) { div.querySelector(".msg").textContent = e.message; }
   };
@@ -277,10 +293,14 @@ document.getElementById("btn-load1").onclick = async () => {
   const {targets} = getSelection();
   const out = document.getElementById("detect-results");
   out.innerHTML = "";
+  const seen = new Set();
   for (const t of targets) {
-    const r = await api(`/api/detect_result?date=${t.date}&tray=${t.tray}&type1=${encodeURIComponent(t.type1)}`);
+    const dk = `${t.date}_${t.tray}`;  // 基準設定はタイプ1間で共有
+    if (seen.has(dk)) continue;
+    seen.add(dk);
+    const r = await api(`/api/detect_result?date=${t.date}&tray=${t.tray}`);
     if (r.exists) {
-      r.ok = true; r.key = `${t.date}_${t.type1}_${t.tray}`; r.n_dishes = r.setting.length;
+      r.ok = true; r.key = dk; r.n_dishes = r.setting.length;
       r.depth_var = r.setting.map(()=>0);
       out.appendChild(renderDetectResult(r));
     }
