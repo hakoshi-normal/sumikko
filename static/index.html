@@ -58,9 +58,16 @@
     <div class="sel-block"><b>日付</b><div id="sel-dates"></div></div>
     <div class="sel-block"><b>トレーID</b><div id="sel-trays"></div></div>
     <div class="sel-block"><b>食後撮影データ</b><div id="sel-names"></div></div>
+    <div class="sel-block"><b>深度モード</b>
+      <select id="depth_mode">
+        <option value="mean">連番平均（連番1-5）</option>
+        <option value="refined">平滑化済み深度（連番0）</option>
+      </select>
+      <!-- <div style="font-size:11px;color:#888;margin-top:4px">画面1〜3共通（refined時は連番0のpngも使用）</div> -->
+    </div>
     <div class="sel-block"><b>YOLO conf</b>
       <input type="number" id="conf" value="0.25" min="0.05" max="1" step="0.05" style="width:70px">
-      <div style="font-size:11px;color:#888;margin-top:4px">検出信頼度しきい値（画面1・2共通）</div>
+      <!-- <div style="font-size:11px;color:#888;margin-top:4px">検出信頼度しきい値（画面1・2共通）</div> -->
     </div>
   </div>
   <div id="progress-wrap">
@@ -249,6 +256,7 @@ function renderDetectResult(r) {
         type1s: [],
         use_cache: document.getElementById("cache1").checked,
         conf: +document.getElementById("conf").value,
+        depth_mode: document.getElementById("depth_mode").value,
       });
       div.replaceWith(renderDetectResult(res.results[0]));
     } catch(e) { alert(e.message); rs.disabled = false; rs.textContent = "別の基準画像で再検出（ランダム）"; }
@@ -282,7 +290,7 @@ document.getElementById("btn-detect").onclick = async () => {
   msg.className = "msg"; msg.textContent = "検出実行中..."; out.innerHTML = "";
   startProgress();
   try {
-    const res = await post("/api/detect", {targets, type1s, use_cache: document.getElementById("cache1").checked, conf: +document.getElementById("conf").value});
+    const res = await post("/api/detect", {targets, type1s, use_cache: document.getElementById("cache1").checked, conf: +document.getElementById("conf").value, depth_mode: document.getElementById("depth_mode").value});
     msg.textContent = "完了";
     res.results.forEach(r => out.appendChild(renderDetectResult(r)));
   } catch(e) { msg.textContent = e.message; msg.className = "msg err"; }
@@ -315,7 +323,7 @@ document.getElementById("btn-classify").onclick = async () => {
   msg.className = "msg"; msg.textContent = "分類実行中..."; out.innerHTML = "";
   startProgress();
   try {
-    const res = await post("/api/classify", {targets, type1s, use_cache: document.getElementById("cache2").checked, conf: +document.getElementById("conf").value});
+    const res = await post("/api/classify", {targets, type1s, use_cache: document.getElementById("cache2").checked, conf: +document.getElementById("conf").value, depth_mode: document.getElementById("depth_mode").value});
     msg.textContent = "完了";
     for (const r of res.results) {
       const div = document.createElement("div"); div.className = "panel";
@@ -391,6 +399,7 @@ document.getElementById("btn-estimate").onclick = async () => {
       use_cache: document.getElementById("cache3").checked,
       n_trials: +document.getElementById("ntrials").value,
       amount_agg: document.getElementById("amount_agg").value,
+      depth_mode: document.getElementById("depth_mode").value,
     });
     msg.textContent = "完了（" + res.saved + " に保存）";
     let html = `<div class="panel"><table><tr><th>対象</th><th>結果</th></tr>`;

@@ -163,13 +163,22 @@ def capture_path(date, type1, stem, ext):
 
 
 def seqs_of(type1_dir, stem_prefix):
-    """stem_prefix = {tray}_{type2}_{ymd} に一致する連番一覧"""
+    """stem_prefix = {tray}_{type2}_{ymd} に一致する連番一覧。
+    連番0（平滑化済み事前処理データ）は含めない。"""
     seqs = []
     for fn in os.listdir(type1_dir):
         m = FNAME_RE.match(fn)
         if m and fn.startswith(stem_prefix) and m.group(5) == "npy":
-            seqs.append(int(m.group(4)))
+            s = int(m.group(4))
+            if s != 0:
+                seqs.append(s)
     return sorted(seqs)
+
+
+def seq0_path(type1_dir, stem_prefix):
+    """連番0（平滑化済み深度）のパスを返す。無ければ None"""
+    p = os.path.join(type1_dir, f"{stem_prefix}_0.npy")
+    return p if os.path.exists(p) else None
 
 
 def _mean_depth_raw(date, type1, stem_prefix):
@@ -228,9 +237,14 @@ def precompute_mean_depth(date, tray, type1s=None):
     return total
 
 
-def rep_image_path(date, type1, stem_prefix):
-    """画像は連番最大(5番目)のものを採用"""
+def rep_image_path(date, type1, stem_prefix, use_seq0=False):
+    """代表画像のパス。use_seq0=True で連番0(平滑化済みに付随するpng)を優先、
+    無ければ連番最大のものを採用"""
     tdir = os.path.join(DATA_DIR, date, type1)
+    if use_seq0:
+        p0 = os.path.join(tdir, f"{stem_prefix}_0.png")
+        if os.path.exists(p0):
+            return p0
     seqs = []
     for fn in os.listdir(tdir):
         m = FNAME_RE.match(fn)
@@ -321,7 +335,8 @@ def yolo_boxes(image_path, use_cache=True, conf=0.25):
     return arr
 
 
-def detect_reference(date, tray, use_cache=True, conf=0.25, shuffle=False):
+def detect_reference(date, tray, use_cache=True, conf=0.25, shuffle=False,
+                     depth_mode="mean"):
     """10割画像から食器を検出し work/test_data/{date}_{tray}/ に保存。
     基準設定はタイプ1間で共有される（同じ物理トレー）。
     shuffle=True の場合、前回と異なる撮影セットをランダムに選択。"""
@@ -342,8 +357,8 @@ def detect_reference(date, tray, use_cache=True, conf=0.25, shuffle=False):
         prefix = random.choice(cands)
     else:
         prefix = prefixes[-1]
-    log(f"{key}: 食器検出 ({prefix})")
-    img_path = rep_image_path(date, "10", prefix)
+    log(f"{key}: 食器検出 ({prefix}, depth_mode={depth_mode})")
+    img_path = rep_image_path(date, "10", prefix, use_seq0=(depth_mode == "refined"))
     depth = mean_depth(date, "10", prefix)
     if img_path is None or depth is None:
         raise HTTPException(404, f"{date}/{tray}: 10割データが不完全です")
@@ -453,7 +468,8 @@ def get_matched_index(features1, features2):
     return col_ind.tolist()
 
 
-def classify_tray(date, tray, type1, use_cache=True, conf=0.25):
+def classify_tray(date, tray, type1, use_cache=True, conf=0.25,
+                  depth_mode="mean"):
     """対象トレーの食器を分類し plate_images/{key}/ に保存。
     対象は基準0割/10割 + 指定タイプ1の食後データのみ。"""
     key = tray_key(date, tray, type1)
@@ -494,7 +510,8 @@ def classify_tray(date, tray, type1, use_cache=True, conf=0.25):
         for prefix in list_captures(date, type1, tray, t2):
             done += 1
             set_progress(done, total, f"{key}: {type1}/{prefix} を分類中")
-            img_path = rep_image_path(date, type1, prefix)
+            img_path = rep_image_path(date, type1, prefix,
+                                      use_seq0=(depth_mode == "refined"))
             depth = mean_depth(date, type1, prefix)
             if img_path is None or depth is None:
                 continue
@@ -667,7 +684,8 @@ def depth_for_meta(meta, seq=None):
             x1, y1, x2, y2 = map(int, box)
             d = np.load(cp).astype(np.float32)[y1:y2, x1:x2]
             return np.rot90(d, k=meta["rot_k"])
-    seqs = [seq] if seq else seqs_of(tdir, meta["prefix"])
+    # seq=0 は平滑化済み事前処理深度
+    seqs = [seq] if seq is not None else seqs_of(tdir, meta["prefix"])
     x1, y1, x2, y2 = map(int, box)
     ds = []
     for s in seqs:
@@ -682,9 +700,10 @@ def depth_for_meta(meta, seq=None):
 
 
 def estimate_tray(date, tray, type1, use_unet=True, use_cache=True,
-                  n_trials=1, amount_agg="mean"):
+                  n_trials=1, amount_agg="mean", depth_mode="mean"):
     """{date}_{type1}_{tray} 1組分の推定。レコードのリストを返す。
-    基準深度は試行ごとに0割/10割の撮影セット・連番をランダム選択。"""
+    基準深度は試行ごとに0割/10割の撮影セット・連番をランダム選択。
+    depth_mode: "mean"=連番1-5の平均, "refined"=連番0(平滑化済み事前処理)。"""
     key = tray_key(date, tray, type1)
     # 基準設定はタイプ1間で共有（work/test_data/{date}_{tray}/）
     ref_dir = os.path.join(TEST_DATA_DIR, ref_key(date, tray))
@@ -746,13 +765,20 @@ def estimate_tray(date, tray, type1, use_unet=True, use_cache=True,
                 e_stem, f_stem = random.choice(empty), random.choice(full)
                 e_img, e_meta = get_crop(e_stem)
                 f_img, f_meta = get_crop(f_stem)
-                seqs_e = seqs_of(os.path.join(DATA_DIR, date, e_meta["type1"]), e_meta["prefix"])
-                seqs_f = seqs_of(os.path.join(DATA_DIR, date, f_meta["type1"]), f_meta["prefix"])
-                se, sf = random.choice(seqs_e), random.choice(seqs_f)
-                d_e = depth_for_meta(e_meta, seq=se)
-                d_f = depth_for_meta(f_meta, seq=sf)
-                # 食後側は連番平均深度を使用
-                d_a = depth_for_meta(t_meta)
+                if depth_mode == "refined":
+                    # 連番0（平滑化済み事前処理深度）を全てに使用
+                    se = sf = 0
+                    d_e = depth_for_meta(e_meta, seq=0)
+                    d_f = depth_for_meta(f_meta, seq=0)
+                    d_a = depth_for_meta(t_meta, seq=0)
+                else:
+                    seqs_e = seqs_of(os.path.join(DATA_DIR, date, e_meta["type1"]), e_meta["prefix"])
+                    seqs_f = seqs_of(os.path.join(DATA_DIR, date, f_meta["type1"]), f_meta["prefix"])
+                    se, sf = random.choice(seqs_e), random.choice(seqs_f)
+                    d_e = depth_for_meta(e_meta, seq=se)
+                    d_f = depth_for_meta(f_meta, seq=sf)
+                    # 食後側は連番平均深度を使用
+                    d_a = depth_for_meta(t_meta)
                 if d_e is None or d_f is None or d_a is None:
                     continue
                 # マスクは画像単位でキャッシュ（組合せが変わっても再利用される）
@@ -780,6 +806,7 @@ def estimate_tray(date, tray, type1, use_unet=True, use_cache=True,
                 "y_pred": preds,              # 全試行の推定値
                 "y_pred_median": float(np.median(preds)),  # 採用値(中央値)
                 "amount_agg": amount_agg,
+                "depth_mode": depth_mode,
                 "r2": None,
                 "mae": None,
             })
@@ -934,14 +961,15 @@ def evaluate_results(selected_keys=None, measured_id=None,
             rs = ref_sets[ti]
             base = f"work/plate_images/{pid}/{pname}"
             dq = lambda stem, seq: (f"/api/depth_png?key={pid}&meal={pname}&stem={stem}"
-                                    + (f"&seq={seq}" if seq else ""))
+                                    + (f"&seq={seq}" if seq is not None else ""))
             ref_imgs = {
                 "empty": f"/api/file?path={base}/{rs['empty']}.png",
                 "full": f"/api/file?path={base}/{rs['full']}.png",
                 "target": f"/api/file?path={base}/{rec.get('target_file')}.png",
                 "empty_depth": dq(rs["empty"], rs.get("empty_seq")),
                 "full_depth": dq(rs["full"], rs.get("full_seq")),
-                "target_depth": dq(rec.get("target_file"), None),
+                "target_depth": dq(rec.get("target_file"),
+                                 0 if rec.get("depth_mode") == "refined" else None),
                 "empty_stem": rs["empty"], "full_stem": rs["full"],
             }
         elif y_pred_all:
@@ -1026,6 +1054,7 @@ class DetectReq(BaseModel):
     type1s: List[str] = []  # 任意名タイプ1 (チェックされたものをそのまま渡す)
     use_cache: bool = True
     conf: float = 0.25  # YOLO信頼度しきい値
+    depth_mode: str = "mean"  # "mean"=連番最大画像, "refined"=連番0画像
 
 
 class SettingReq(BaseModel):
@@ -1041,6 +1070,7 @@ class EstimateReq(BaseModel):
     use_cache: bool = True
     n_trials: int = 1
     amount_agg: str = "mean"
+    depth_mode: str = "mean"  # "mean"=連番平均, "refined"=連番0(平滑化済み)
 
 
 @app.get("/api/scan")
@@ -1082,7 +1112,8 @@ def api_detect(req: DetectReq):
         try:
             with _lock:
                 res = detect_reference(date, tray, req.use_cache, req.conf,
-                                       shuffle=bool(t.get("shuffle")))
+                                       shuffle=bool(t.get("shuffle")),
+                                       depth_mode=req.depth_mode)
                 # 前処理: 連番深度の平均を事前計算（選択した食後撮影データのみ）
                 n_mean = precompute_mean_depth(date, tray, type1s=req.type1s)
             res["n_mean_depth"] = n_mean
@@ -1145,7 +1176,8 @@ def api_classify(req: DetectReq):
             with _lock:
                 summary = classify_tray(date, tray, type1,
                                         use_cache=req.use_cache,
-                                        conf=req.conf)
+                                        conf=req.conf,
+                                        depth_mode=req.depth_mode)
             out.append({"key": key, "ok": True, "summary": summary})
         except HTTPException as e:
             out.append({"key": key, "ok": False, "error": e.detail})
@@ -1275,7 +1307,8 @@ def api_estimate(req: EstimateReq):
         try:
             with _lock:
                 recs = estimate_tray(date, tray, type1, req.use_unet, req.use_cache,
-                                     req.n_trials, amount_agg=req.amount_agg)
+                                     req.n_trials, amount_agg=req.amount_agg,
+                                     depth_mode=req.depth_mode)
             # 同一キーの旧レコードを置き換え
             all_records = [r for r in all_records if r.get("plate_id") != key]
             all_records.extend(recs)
