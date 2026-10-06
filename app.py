@@ -443,9 +443,14 @@ def detect_reference(date, tray, use_cache=True, conf=0.25, shuffle=False,
 # ---------------------------------------------------------------------------
 # 特徴量マッチング (ハンガリアン)
 # ---------------------------------------------------------------------------
-def calc_feature(img):
-    """食器の複合特徴量: [面積, 平均彩度]"""
+def calc_feature(img, mode="sat"):
+    """食器の複合特徴量。
+    mode="sat": [面積, 平均彩度], mode="rgb": [面積, 平均R, 平均G, 平均B]"""
     h, w = img.shape[:2]
+    if mode == "rgb":
+        mean_bgr = img.reshape(-1, 3).mean(axis=0)
+        return np.array([h * w, mean_bgr[2], mean_bgr[1], mean_bgr[0]],
+                        dtype=np.float32)
     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
     return np.array([h * w, hsv[:, :, 1].mean()], dtype=np.float32)
 
@@ -459,7 +464,7 @@ def get_matched_index(features1, features2):
     std[std < 1e-6] = 1.0
     features1 = (features1 - mean) / std
     features2 = (features2 - mean) / std
-    weights = np.array([1.0, 1.0], dtype=np.float32)
+    weights = np.ones(features1.shape[1], dtype=np.float32)
     cost = np.zeros((len(features2), len(features1)), dtype=np.float32)
     for i, f2 in enumerate(features2):
         for j, f1 in enumerate(features1):
@@ -469,7 +474,7 @@ def get_matched_index(features1, features2):
 
 
 def classify_tray(date, tray, type1, use_cache=True, conf=0.25,
-                  depth_mode="mean"):
+                  depth_mode="mean", feat_mode="sat"):
     """対象トレーの食器を分類し plate_images/{key}/ に保存。
     対象は基準0割/10割 + 指定タイプ1の食後データのみ。"""
     key = tray_key(date, tray, type1)
@@ -486,7 +491,7 @@ def classify_tray(date, tray, type1, use_cache=True, conf=0.25,
     base_images = [os.path.join(ref_dir, f"plate_{d['plate_number']}.png")
                    for d in used]
     base_images = [p for p in base_images if os.path.exists(p)]
-    base_features = [calc_feature(cv2.imread(p)) for p in base_images]
+    base_features = [calc_feature(cv2.imread(p), mode=feat_mode) for p in base_images]
     gt_count = len(base_images)
     if gt_count == 0:
         raise HTTPException(404, f"{key}: 基準食器が0件です。先に食器検出を実行してください。")
@@ -542,7 +547,7 @@ def classify_tray(date, tray, type1, use_cache=True, conf=0.25,
                 cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
                 d_img, d_dep, k = rotate_by_region(d_img, d_dep, cx, cy, W, H)
                 crops.append((d_img, d_dep, k, [int(v) for v in boxes[i]]))
-                features.append(calc_feature(d_img))
+                features.append(calc_feature(d_img, mode=feat_mode))
 
             if features:
                 matched = get_matched_index(base_features, features)
@@ -1055,6 +1060,7 @@ class DetectReq(BaseModel):
     use_cache: bool = True
     conf: float = 0.25  # YOLO信頼度しきい値
     depth_mode: str = "mean"  # "mean"=連番最大画像, "refined"=連番0画像
+    feat_mode: str = "sat"    # "sat"=面積+彩度, "rgb"=面積+RGB平均
 
 
 class SettingReq(BaseModel):
@@ -1177,7 +1183,8 @@ def api_classify(req: DetectReq):
                 summary = classify_tray(date, tray, type1,
                                         use_cache=req.use_cache,
                                         conf=req.conf,
-                                        depth_mode=req.depth_mode)
+                                        depth_mode=req.depth_mode,
+                                        feat_mode=req.feat_mode)
             out.append({"key": key, "ok": True, "summary": summary})
         except HTTPException as e:
             out.append({"key": key, "ok": False, "error": e.detail})

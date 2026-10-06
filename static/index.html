@@ -96,6 +96,10 @@
     <h2>食器分類（基準食器とのハンガリアンマッチング）</h2>
     <div class="row">
       <label><input type="checkbox" id="cache2" checked> YOLOキャッシュを使用</label>
+      <label>特徴量: <select id="feat_mode">
+        <option value="sat">面積＋平均彩度</option>
+        <option value="rgb">面積＋RGB平均</option>
+      </select></label>
       <button class="act" id="btn-classify">分類実行</button>
       <button class="sub" id="btn-load2">分類結果を表示</button>
     </div>
@@ -323,7 +327,7 @@ document.getElementById("btn-classify").onclick = async () => {
   msg.className = "msg"; msg.textContent = "分類実行中..."; out.innerHTML = "";
   startProgress();
   try {
-    const res = await post("/api/classify", {targets, type1s, use_cache: document.getElementById("cache2").checked, conf: +document.getElementById("conf").value, depth_mode: document.getElementById("depth_mode").value});
+    const res = await post("/api/classify", {targets, type1s, use_cache: document.getElementById("cache2").checked, conf: +document.getElementById("conf").value, depth_mode: document.getElementById("depth_mode").value, feat_mode: document.getElementById("feat_mode").value});
     msg.textContent = "完了";
     for (const r of res.results) {
       const div = document.createElement("div"); div.className = "panel";
