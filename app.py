@@ -31,7 +31,7 @@ import numpy as np
 from scipy.optimize import linear_sum_assignment
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import List, Optional
@@ -842,20 +842,27 @@ def draw_scatter(y_true, y_pred, title, r2, mae, save_path):
         "Meiryo", "Yu Gothic", "Hiragino Sans", "AppleGothic",
         "Noto Sans CJK JP", "IPAexGothic", "TakaoGothic",
     ]
-    plt.figure(figsize=(6, 5))
-    plt.scatter(y_true, y_pred, alpha=0.5, s=20)
-    plt.plot([0, 1], [0, 1], "--", color="gray", linewidth=1)
-    plt.xlim(-0.02, 1.02)
-    plt.ylim(-0.02, 1.02)
+    fig, ax = plt.subplots(figsize=(6, 6))
+    ax.scatter(y_true, y_pred, alpha=0.5, s=20)
+    ax.plot([0, 1], [0, 1], "--", color="gray", linewidth=1)
+    ax.set_xlim(-0.02, 1.02)
+    ax.set_ylim(-0.02, 1.02)
+    ax.set_aspect("equal", adjustable="box")  # 縦横比1:1
     plt.xlabel("実測値", fontsize=12)
     plt.ylabel("システム推定値", fontsize=12)
     plt.title(f"{title}\nN={len(y_true)}, R²={r2:.3f}, MAE={mae:.3f}", fontsize=13)
     plt.tight_layout()
     plt.savefig(save_path, dpi=200, bbox_inches="tight")
+    try:
+        plt.savefig(os.path.splitext(save_path)[0] + ".pgf", bbox_inches="tight")
+    except Exception as e:
+        log(f"pgf保存に失敗: {e}")
     plt.close()
 
 
 def draw_confusion_matrix(y_true, y_pred, title, r2, mae, save_path):
+    """混同行列を描画。cbar=False でカラーバー(ラスタ画像)を出さないため
+    pgfでも外部画像を生成しない。"""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -870,14 +877,19 @@ def draw_confusion_matrix(y_true, y_pred, title, r2, mae, save_path):
 
     cm = confusion_matrix(to_index(y_true), to_index(y_pred)).T
     cm = np.flipud(cm)
-    plt.figure(figsize=(6, 5))
-    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues",
-                xticklabels=LEVELS, yticklabels=LEVELS[::-1])
+    fig, ax = plt.subplots(figsize=(6, 6))
+    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", cbar=False,
+                xticklabels=LEVELS, yticklabels=LEVELS[::-1], ax=ax,
+                square=True)  # 縦横比1:1
     plt.title(f"{title}\nN={len(y_true)}, R²={r2:.3f}, MAE={mae:.3f}", fontsize=13)
     plt.xlabel("実測値", fontsize=12)
     plt.ylabel("システム推定値", fontsize=12)
     plt.tight_layout()
     plt.savefig(save_path, dpi=200, bbox_inches="tight")
+    try:
+        plt.savefig(os.path.splitext(save_path)[0] + ".pgf", bbox_inches="tight")
+    except Exception as e:
+        log(f"pgf保存に失敗: {e}")
     plt.close()
 
 
@@ -1350,6 +1362,14 @@ def api_results(measured: Optional[str] = None, keys: Optional[str] = None,
                            meals=meal_set, plot=plot, type1s=type1_set)
     for label, cm in res["cm"].items():
         cm["url"] = "/api/file?path=" + cm["path"].replace("\\", "/")
+        pgf_p = os.path.splitext(cm["path"])[0] + ".pgf"
+        if os.path.exists(pgf_p):
+            if glob.glob(os.path.splitext(pgf_p)[0] + "-img*.png"):
+                # 外部画像を参照するpgfはzipでまとめて配信
+                cm["pgf_url"] = "/api/pgf_zip?path=" + cm["path"].replace("\\", "/")
+                cm["pgf_is_zip"] = True
+            else:
+                cm["pgf_url"] = "/api/file?path=" + pgf_p.replace("\\", "/")
     if measured == "auto":
         res["has_measured"] = any(
             os.path.exists(measured_path(t)) for t in (type1_set or [])) \
@@ -1359,6 +1379,31 @@ def api_results(measured: Optional[str] = None, keys: Optional[str] = None,
     res["has_final"] = os.path.exists(FINAL_RESULTS)
     res["measured"] = measured or ""
     return res
+
+
+@app.get("/api/pgf_zip")
+def api_pgf_zip(path: str):
+    """pgfファイルと参照する外部画像(*-img*.png)をzipで返す。
+    pgf内のカラーマップ等は外部png参照のため単体ではLaTeXで表示できない。"""
+    ap = os.path.abspath(os.path.join(BASE_DIR, path))
+    allowed = [os.path.abspath(WORK_DIR), os.path.abspath(DATA_DIR)]
+    if not any(ap.startswith(a + os.sep) or ap == a for a in allowed):
+        raise HTTPException(403, "forbidden")
+    pgf = os.path.splitext(ap)[0] + ".pgf"
+    if not os.path.exists(pgf):
+        raise HTTPException(404, "pgf not found")
+    import io
+    import zipfile
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.write(pgf, os.path.basename(pgf))
+        for img in glob.glob(os.path.splitext(pgf)[0] + "-img*.png"):
+            z.write(img, os.path.basename(img))
+    buf.seek(0)
+    fname = os.path.splitext(os.path.basename(pgf))[0] + ".zip"
+    return StreamingResponse(
+        buf, media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'})
 
 
 @app.get("/api/depth_png")
@@ -1404,6 +1449,10 @@ def api_file(path: str):
         raise HTTPException(403, "forbidden")
     if not os.path.exists(ap):
         raise HTTPException(404, "not found")
+    # pgfはダウンロード時にファイル名(.pgf)が付くよう attachment で返す
+    if ap.endswith(".pgf"):
+        return FileResponse(ap, filename=os.path.basename(ap),
+                            content_disposition_type="attachment")
     return FileResponse(ap)
 
 

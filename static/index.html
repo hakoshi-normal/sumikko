@@ -448,7 +448,10 @@ document.getElementById("btn-eval").onclick = async () => {
     let html = "";
     const cm = r.cm["result"];
     if (cm)
-      html += `<div class="panel"><h2>R²=${cm.r2.toFixed(3)}, MAE=${cm.mae.toFixed(3)}, N=${cm.n}</h2><img class="cm" src="${cm.url}&_=${Date.now()}"></div>`;
+      html += `<div class="panel"><h2>R²=${cm.r2.toFixed(3)}, MAE=${cm.mae.toFixed(3)}, N=${cm.n}</h2>` +
+        `<img class="cm" src="${cm.url}&_=${Date.now()}"><br>` +
+        (cm.pgf_url ? `<a class="sub" style="display:inline-block;margin-top:6px" href="${cm.pgf_url}&_=${Date.now()}" download>${cm.pgf_is_zip ? "PGFをダウンロード（.pgf＋参照画像のzip）" : "PGFをダウンロード（LaTeX用）"}</a>` : "") +
+        `</div>`;
     // ---- ソート付きテーブル ----
     const SORT_KEYS = {
       "対象": x=>x.plate_id, "食種": x=>x.plate_name, "タイプ": x=>x.target||"",
