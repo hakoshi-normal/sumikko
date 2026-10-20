@@ -12,7 +12,7 @@
   nav { display:flex; gap:4px; background:#fff; border-bottom:1px solid var(--line); padding:0 20px; }
   nav button { border:none; background:none; padding:10px 14px; cursor:pointer; font-size:14px; color:var(--muted); border-bottom:2px solid transparent; }
   nav button.active { color:var(--accent); border-bottom-color:var(--accent); font-weight:600; }
-  main { padding:16px 20px; max-width:1100px; }
+  main { padding:16px 20px; max-width:1700px; }
   .panel { background:#fff; border:1px solid var(--line); border-radius:6px; padding:14px 16px; margin-bottom:14px; }
   .panel h2 { font-size:14px; margin:0 0 10px; }
   .sel-group { display:flex; flex-wrap:wrap; gap:18px; }
@@ -143,6 +143,7 @@
         </select>
       </label>
       <button class="act" id="btn-eval">評価実行</button>
+      <button class="sub" id="btn-export-depth">食器深度結果を保存</button>
       <button class="sub" id="btn-reload-measured">一覧更新</button>
     </div>
     <div class="row">対象食種: <span id="meal-filter"></span></div>
@@ -425,6 +426,19 @@ async function reloadMeasured() {
 }
 document.getElementById("btn-reload-measured").onclick = reloadMeasured;
 
+document.getElementById("btn-export-depth").onclick = async () => {
+  const {targets} = getSelection();
+  const msg = document.getElementById("msg4");
+  msg.className = "msg"; msg.textContent = "食器深度結果を保存中...";
+  try {
+    const keys = targets.map(t=>`${t.date}_${t.type1}_${t.tray}`).join(",");
+    const r = await api("/api/export_plate_depth?keys=" + encodeURIComponent(keys));
+    msg.textContent = `${r.saved} 件を ${r.dir}/ に保存しました` +
+      (r.skipped ? `（スキップ ${r.skipped} 件）` : "");
+    msg.className = "msg ok";
+  } catch(e) { msg.textContent = e.message; msg.className = "msg err"; }
+};
+
 document.getElementById("btn-eval").onclick = async () => {
   const {targets, type1s} = getSelection();
   if (!type1s.length) return alert("食後撮影データを選択してください");
@@ -475,28 +489,45 @@ document.getElementById("btn-eval").onclick = async () => {
       const th = k => `<th class="sortable" data-k="${k}" style="cursor:pointer">${k}${sortKey===k?(sortAsc?"▲":"▼"):""}</th>`;
       let t = `<div class="panel"><table><tr>` +
         ["対象","食種","タイプ","target_file","軟菜"].map(th).join("") +
-        `<th>食器画像(0割/10割/食後)</th>` +
+        `<th>食器画像(0割/10割/食後)</th><th>トレー全体深度(0割/10割/食後)</th>` +
         ["推定値(中央値)","試行数","正解値","誤差"].map(th).join("") + `</tr>`;
       for (const x of sorted) {
         const pred = x.y_pred.length ? x.y_pred[0].toFixed(3) : "-";
         const all = (x.y_pred_all||[]).map(v=>v.toFixed(3)).join(", ");
         const err = (x.mae !== null && x.mae !== undefined) ? x.mae.toFixed(3) : "-";
-        let imgs = "-";
+        let imgs = "-", trays = "-";
         if (x.ref_imgs) {
           const ri = x.ref_imgs;
           const ts = Date.now();
           const LABELS = {empty:"0割", full:"10割", target:"食後"};
-          imgs = ["empty","full","target"].map(k => {
-            if (!ri[k]) return "";
-            const ttl = k==="empty"?ri.empty_stem:k==="full"?ri.full_stem:x.target_file;
-            let cell = `<div style="display:inline-block;text-align:center;margin:1px">
+          const stemOf = k => k==="empty"?ri.empty_stem:k==="full"?ri.full_stem:x.target_file;
+          // 食器画像: 上段カラー・下段深度の2x3グリッド
+          const top = [], bot = [];
+          for (const k of ["empty","full","target"]) {
+            const ttl = stemOf(k);
+            if (!ri[k]) { top.push("<div></div>"); bot.push("<div></div>"); continue; }
+            top.push(`<div style="text-align:center">
               <div style="font-size:10px;color:#666">${LABELS[k]}</div>
-              <img class="crop" style="max-width:72px;display:block" src="${ri[k]}&_=${ts}" title="${ttl}">`;
-            if (ri[k+"_depth"]) cell += `<img class="crop" style="max-width:72px;display:block" src="${ri[k+"_depth"]}&_=${ts}" title="depth: ${ttl}">`;
-            return cell + "</div>";
-          }).join("");
+              <img class="crop" style="max-width:72px;display:block" src="${ri[k]}&_=${ts}" title="${ttl}"></div>`);
+            bot.push(`<div style="text-align:center">
+              <img class="crop" style="max-width:72px;display:block" src="${ri[k+"_depth"]||""}&_=${ts}" title="depth: ${ttl}">
+              <div style="font-size:9px;color:#888;max-width:72px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${ttl}">${ttl||""}</div></div>`);
+          }
+          imgs = `<div style="display:grid;grid-template-columns:repeat(3,auto);gap:1px">`
+            + top.join("") + bot.join("") + "</div>";
+          // トレー全体深度: 0割/10割/食後を横並び
+          trays = `<div style="display:grid;grid-template-columns:repeat(3,auto);gap:1px">`
+            + ["empty","full","target"].map(k => {
+              const u = ri[k+"_tray"], ttl = stemOf(k);
+              if (!u) return "<div></div>";
+              return `<div style="text-align:center">
+                <div style="font-size:10px;color:#666">${LABELS[k]}</div>
+                <img class="crop" style="max-width:200px;display:block" src="${u}&_=${ts}" title="tray depth: ${ttl}">
+                <div style="font-size:9px;color:#888;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${ttl}">${ttl||""}</div>
+              </div>`;
+            }).join("") + "</div>";
         }
-        t += `<tr><td>${x.plate_id}</td><td>${x.plate_name}</td><td>${x.target||""}</td><td>${x.target_file||""}</td><td>${x.nansai?"○":""}</td><td>${imgs}</td><td title="${all}">${pred}</td><td>${x.n_trials||1}</td><td>${x.y_true??"-"}</td><td>${err}</td></tr>`;
+        t += `<tr><td>${x.plate_id}</td><td>${x.plate_name}</td><td>${x.target||""}</td><td>${x.target_file||""}</td><td>${x.nansai?"○":""}</td><td>${imgs}</td><td>${trays}</td><td title="${all}">${pred}</td><td>${x.n_trials||1}</td><td>${x.y_true??"-"}</td><td>${err}</td></tr>`;
       }
       t += "</table></div>";
       return t;

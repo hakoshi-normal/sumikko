@@ -46,6 +46,7 @@ TEST_DATA_DIR = os.path.join(WORK_DIR, "test_data")
 PLATE_IMG_DIR = os.path.join(WORK_DIR, "plate_images")
 CACHE_DIR = os.path.join(WORK_DIR, "cache")
 RESULT_DIR = os.path.join(WORK_DIR, "result_analyze")
+PLATE_DEPTH_DIR = os.path.join(WORK_DIR, "plate_depth_results")
 FINAL_RESULTS = os.path.join(BASE_DIR, "final_results.json")
 MEASURED_RESULTS = os.path.join(BASE_DIR, "measured_results.json")
 
@@ -54,7 +55,7 @@ MEAN_DEPTH_DIR = os.path.join(WORK_DIR, "mean_depth")
 # 深度の有効範囲（calc_amount とカラーマップ表示で共通）
 DEPTH_MIN, DEPTH_MAX = 2000.0, 3500.0
 
-for d in [DATA_DIR, WORK_DIR, TEST_DATA_DIR, PLATE_IMG_DIR, CACHE_DIR, RESULT_DIR, MEAN_DEPTH_DIR]:
+for d in [DATA_DIR, WORK_DIR, TEST_DATA_DIR, PLATE_IMG_DIR, CACHE_DIR, RESULT_DIR, MEAN_DEPTH_DIR, PLATE_DEPTH_DIR]:
     os.makedirs(d, exist_ok=True)
 
 # ---------------------------------------------------------------------------
@@ -707,7 +708,7 @@ def depth_for_meta(meta, seq=None):
 def estimate_tray(date, tray, type1, use_unet=True, use_cache=True,
                   n_trials=1, amount_agg="mean", depth_mode="mean"):
     """{date}_{type1}_{tray} 1組分の推定。レコードのリストを返す。
-    基準深度は試行ごとに0割/10割の撮影セット・連番をランダム選択。
+    基準は試行ごとに0割/10割の撮影セットをランダム選択（深度は連番平均）。
     depth_mode: "mean"=連番1-5の平均, "refined"=連番0(平滑化済み事前処理)。"""
     key = tray_key(date, tray, type1)
     # 基準設定はタイプ1間で共有（work/test_data/{date}_{tray}/）
@@ -777,12 +778,10 @@ def estimate_tray(date, tray, type1, use_unet=True, use_cache=True,
                     d_f = depth_for_meta(f_meta, seq=0)
                     d_a = depth_for_meta(t_meta, seq=0)
                 else:
-                    seqs_e = seqs_of(os.path.join(DATA_DIR, date, e_meta["type1"]), e_meta["prefix"])
-                    seqs_f = seqs_of(os.path.join(DATA_DIR, date, f_meta["type1"]), f_meta["prefix"])
-                    se, sf = random.choice(seqs_e), random.choice(seqs_f)
-                    d_e = depth_for_meta(e_meta, seq=se)
-                    d_f = depth_for_meta(f_meta, seq=sf)
-                    # 食後側は連番平均深度を使用
+                    # 0割/10割/食後すべて連番平均深度を使用
+                    se = sf = None
+                    d_e = depth_for_meta(e_meta)
+                    d_f = depth_for_meta(f_meta)
                     d_a = depth_for_meta(t_meta)
                 if d_e is None or d_f is None or d_a is None:
                     continue
@@ -977,16 +976,20 @@ def evaluate_results(selected_keys=None, measured_id=None,
             ti = min(ti, len(ref_sets) - 1)
             rs = ref_sets[ti]
             base = f"work/plate_images/{pid}/{pname}"
-            dq = lambda stem, seq: (f"/api/depth_png?key={pid}&meal={pname}&stem={stem}"
-                                    + (f"&seq={seq}" if seq is not None else ""))
+            dq = lambda api, stem, seq: (f"/api/{api}?key={pid}&meal={pname}&stem={stem}"
+                                       + (f"&seq={seq}" if seq is not None else ""))
+            e_seq, f_seq = rs.get("empty_seq"), rs.get("full_seq")
+            t_seq = 0 if rec.get("depth_mode") == "refined" else None
             ref_imgs = {
                 "empty": f"/api/file?path={base}/{rs['empty']}.png",
                 "full": f"/api/file?path={base}/{rs['full']}.png",
                 "target": f"/api/file?path={base}/{rec.get('target_file')}.png",
-                "empty_depth": dq(rs["empty"], rs.get("empty_seq")),
-                "full_depth": dq(rs["full"], rs.get("full_seq")),
-                "target_depth": dq(rec.get("target_file"),
-                                 0 if rec.get("depth_mode") == "refined" else None),
+                "empty_depth": dq("depth_png", rs["empty"], e_seq),
+                "full_depth": dq("depth_png", rs["full"], f_seq),
+                "target_depth": dq("depth_png", rec.get("target_file"), t_seq),
+                "empty_tray": dq("tray_depth_png", rs["empty"], e_seq),
+                "full_tray": dq("tray_depth_png", rs["full"], f_seq),
+                "target_tray": dq("tray_depth_png", rec.get("target_file"), t_seq),
                 "empty_stem": rs["empty"], "full_stem": rs["full"],
             }
         elif y_pred_all:
@@ -997,14 +1000,17 @@ def evaluate_results(selected_keys=None, measured_id=None,
             es = sorted(s for s in stems if s.startswith("0_"))
             fs = sorted(s for s in stems if s.startswith("10_"))
             base = f"work/plate_images/{pid}/{pname}"
-            dq0 = lambda stem: f"/api/depth_png?key={pid}&meal={pname}&stem={stem}"
+            dq0 = lambda api, stem: f"/api/{api}?key={pid}&meal={pname}&stem={stem}"
             ref_imgs = {
                 "empty": f"/api/file?path={base}/{es[0]}.png" if es else None,
                 "full": f"/api/file?path={base}/{fs[0]}.png" if fs else None,
                 "target": f"/api/file?path={base}/{rec.get('target_file')}.png",
-                "empty_depth": dq0(es[0]) if es else None,
-                "full_depth": dq0(fs[0]) if fs else None,
-                "target_depth": dq0(rec.get("target_file")),
+                "empty_depth": dq0("depth_png", es[0]) if es else None,
+                "full_depth": dq0("depth_png", fs[0]) if fs else None,
+                "target_depth": dq0("depth_png", rec.get("target_file")),
+                "empty_tray": dq0("tray_depth_png", es[0]) if es else None,
+                "full_tray": dq0("tray_depth_png", fs[0]) if fs else None,
+                "target_tray": dq0("tray_depth_png", rec.get("target_file")),
                 "empty_stem": es[0] if es else "", "full_stem": fs[0] if fs else "",
             }
         y_true = None
@@ -1381,6 +1387,48 @@ def api_results(measured: Optional[str] = None, keys: Optional[str] = None,
     return res
 
 
+@app.get("/api/export_plate_depth")
+def api_export_plate_depth(keys: Optional[str] = None):
+    """食後食器ごとに2x2画像(左上:食後トレーカラー, 右上:食後食器カラー,
+    左下:食後トレー深度, 右下:食後食器深度)を work/plate_depth_results/ に保存。"""
+    sel = set(keys.split(",")) if keys else None
+    saved, skipped = 0, []
+    for rec in load_json_list(FINAL_RESULTS):
+        pid, meal, stem = rec.get("plate_id"), rec.get("plate_name"), rec.get("target_file")
+        if sel and pid not in sel or not stem:
+            continue
+        try:
+            meta = _load_plate_meta(pid, meal, stem)
+            seq = 0 if rec.get("depth_mode") == "refined" else None
+            tray_p = rep_image_path(meta["date"], meta["type1"], meta["prefix"],
+                                    use_seq0=(seq == 0))
+            dish_p = os.path.join(PLATE_IMG_DIR, pid, meal, stem + ".png")
+            tray_rgb = cv2.imread(tray_p) if tray_p else None
+            dish_rgb = cv2.imread(dish_p)
+            tray_d = _depth_vis(_tray_depth_array(meta, seq))
+            dish_d = _depth_vis(depth_for_meta(meta, seq))
+            if any(x is None for x in (tray_rgb, dish_rgb, tray_d, dish_d)):
+                skipped.append(stem)
+                continue
+            th = tray_rgb.shape[0]
+            dh, dw = dish_rgb.shape[:2]
+            dw2 = max(1, int(round(dw * th / dh)))  # 右列をトレーと同じ高さに
+            dish_rgb = cv2.resize(dish_rgb, (dw2, th))
+            dish_d = cv2.resize(dish_d, (dw2, th))
+            if tray_d.shape[:2] != tray_rgb.shape[:2]:
+                tray_d = cv2.resize(tray_d, (tray_rgb.shape[1], th))
+            grid = np.vstack([np.hstack([tray_rgb, dish_rgb]),
+                              np.hstack([tray_d, dish_d])])
+            out_p = os.path.join(PLATE_DEPTH_DIR, pid, meal, stem + ".png")
+            os.makedirs(os.path.dirname(out_p), exist_ok=True)
+            cv2.imwrite(out_p, grid)
+            saved += 1
+        except Exception:
+            skipped.append(stem)
+    return {"saved": saved, "skipped": len(skipped), "skipped_stems": skipped[:20],
+            "dir": "work/plate_depth_results"}
+
+
 @app.get("/api/pgf_zip")
 def api_pgf_zip(path: str):
     """pgfファイルと参照する外部画像(*-img*.png)をzipで返す。
@@ -1406,37 +1454,74 @@ def api_pgf_zip(path: str):
         headers={"Content-Disposition": f'attachment; filename="{fname}"'})
 
 
+def _depth_vis(d):
+    """深度(ndarray)をカラーマップBGR画像に変換。calc_amount と同じ
+    範囲(2000-3500)・欠損inpaintロジックで正規化。全欠損時はNone。"""
+    d = d.astype(np.float32)
+    invalid = (d < DEPTH_MIN) | (d > DEPTH_MAX) | ~np.isfinite(d)
+    if np.all(invalid):
+        return None
+    # calc_amount と同じロジック: 範囲外を欠損として inpaint で補完
+    d_filled = d.copy()
+    d_filled[invalid] = 0.0
+    if np.any(invalid):
+        d_filled = cv2.inpaint(d_filled, invalid.astype(np.uint8) * 255,
+                               3, cv2.INPAINT_TELEA)
+    norm = np.clip((d_filled - DEPTH_MIN) / (DEPTH_MAX - DEPTH_MIN) * 255,
+                   0, 255).astype(np.uint8)
+    vis = cv2.applyColorMap(norm, cv2.COLORMAP_TURBO)
+    vis[invalid] = 0
+    return vis
+
+
+def _depth_vis_png(d, cpath):
+    vis = _depth_vis(d)
+    if vis is None:
+        return False
+    os.makedirs(os.path.dirname(cpath), exist_ok=True)
+    cv2.imwrite(cpath, vis)
+    return True
+
+
+def _tray_depth_array(meta, seq):
+    """トレー全体深度を返す。seq=None→連番平均、0→平滑化済み。"""
+    if seq is None:
+        return mean_depth(meta["date"], meta["type1"], meta["prefix"])
+    p = os.path.join(DATA_DIR, meta["date"], meta["type1"],
+                     f"{meta['prefix']}_{seq}.npy")
+    return np.load(p).astype(np.float32) if os.path.exists(p) else None
+
+
+def _load_plate_meta(key, meal, stem):
+    meta_p = os.path.join(PLATE_IMG_DIR, key, meal, stem + ".json")
+    if not os.path.exists(meta_p):
+        raise HTTPException(404, "not found")
+    return json.load(open(meta_p, encoding="utf-8"))
+
+
 @app.get("/api/depth_png")
 def api_depth_png(key: str, meal: str, stem: str, seq: Optional[int] = None):
-    """分類済み食器の深度をカラーマップPNGで返す。seq指定時はその連番のみ。
-    正規化範囲は calc_amount と同じ depth_min〜depth_max で固定。
-    範囲外・欠損値は calc_amount と同様に inpaint で補完して表示。"""
+    """分類済み食器の深度をカラーマップPNGで返す。seq指定時はその連番のみ。"""
     ckey = hashlib.md5(f"{key}|{meal}|{stem}|{seq}".encode()).hexdigest()
     cpath = os.path.join(CACHE_DIR, "depth_png", f"{ckey}.png")
     if not os.path.exists(cpath):
-        meta_p = os.path.join(PLATE_IMG_DIR, key, meal, stem + ".json")
-        if not os.path.exists(meta_p):
-            raise HTTPException(404, "not found")
-        meta = json.load(open(meta_p, encoding="utf-8"))
+        meta = _load_plate_meta(key, meal, stem)
         d = depth_for_meta(meta, seq)
-        if d is None:
+        if d is None or not _depth_vis_png(d, cpath):
             raise HTTPException(404, "depth not found")
-        d = d.astype(np.float32)
-        invalid = (d < DEPTH_MIN) | (d > DEPTH_MAX) | ~np.isfinite(d)
-        if np.all(invalid):
-            raise HTTPException(404, "no valid depth")
-        # calc_amount と同じロジック: 範囲外を欠損として inpaint で補完
-        d_filled = d.copy()
-        d_filled[invalid] = 0.0
-        if np.any(invalid):
-            d_filled = cv2.inpaint(d_filled, invalid.astype(np.uint8) * 255,
-                                   3, cv2.INPAINT_TELEA)
-        norm = np.clip((d_filled - DEPTH_MIN) / (DEPTH_MAX - DEPTH_MIN) * 255,
-                       0, 255).astype(np.uint8)
-        vis = cv2.applyColorMap(norm, cv2.COLORMAP_TURBO)
-        vis[invalid] = 0
-        os.makedirs(os.path.dirname(cpath), exist_ok=True)
-        cv2.imwrite(cpath, vis)
+    return FileResponse(cpath)
+
+
+@app.get("/api/tray_depth_png")
+def api_tray_depth_png(key: str, meal: str, stem: str, seq: Optional[int] = None):
+    """トレー全体(クロップ前)の深度をカラーマップPNGで返す。"""
+    ckey = hashlib.md5(f"tray|{key}|{meal}|{stem}|{seq}".encode()).hexdigest()
+    cpath = os.path.join(CACHE_DIR, "tray_depth_png", f"{ckey}.png")
+    if not os.path.exists(cpath):
+        meta = _load_plate_meta(key, meal, stem)
+        d = _tray_depth_array(meta, seq)
+        if d is None or not _depth_vis_png(d, cpath):
+            raise HTTPException(404, "depth not found")
     return FileResponse(cpath)
 
 
